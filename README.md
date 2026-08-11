@@ -98,6 +98,36 @@ docker build -t jwt-notify .
 docker run -p 8000:8000 jwt-notify
 ```
 
+## Deploying to a Proxmox LXC
+
+`deploy/proxmox-lxc.sh` creates an unprivileged Debian 12 container, installs the
+service into it and runs it under systemd. Run it **on the Proxmox host, as
+root**:
+
+```bash
+./deploy/proxmox-lxc.sh
+```
+
+It picks the next free VMID, downloads the Debian template if the host does not
+already have one, and takes DHCP by default. Anything can be overridden:
+
+```bash
+VMID=142 MEMORY=1024 IPV4=192.168.1.50/24 GATEWAY=192.168.1.1 ./deploy/proxmox-lxc.sh
+```
+
+If the repository is private, export a token with read access first
+(`GITHUB_TOKEN=... ./deploy/proxmox-lxc.sh`); it is passed to the container
+through the environment rather than the command line, and is stripped from the
+clone's remote URL afterwards.
+
+The script finishes by checking `/health` and generating a token from the
+documented example key, then prints the container's address. Afterwards:
+
+```bash
+pct exec <vmid> -- journalctl -u jwt-notify -f       # logs
+pct exec <vmid> -- systemctl restart jwt-notify      # restart
+```
+
 ## Tests
 
 ```bash
