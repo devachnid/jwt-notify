@@ -55,13 +55,6 @@
         "description": "Send a text message",
         "parameters": [
           {
-            "name": "x-proxy-key",
-            "in": "header",
-            "required": false,
-            "x-ms-summary": "x-proxy-key",
-            "type": "string"
-          },
-          {
             "name": "body",
             "in": "body",
             "required": true,
@@ -90,13 +83,6 @@
         "summary": "Send an email",
         "description": "Send an email",
         "parameters": [
-          {
-            "name": "x-proxy-key",
-            "in": "header",
-            "required": false,
-            "x-ms-summary": "x-proxy-key",
-            "type": "string"
-          },
           {
             "name": "body",
             "in": "body",
@@ -127,13 +113,6 @@
         "description": "Send a letter from a template",
         "parameters": [
           {
-            "name": "x-proxy-key",
-            "in": "header",
-            "required": false,
-            "x-ms-summary": "x-proxy-key",
-            "type": "string"
-          },
-          {
             "name": "body",
             "in": "body",
             "required": true,
@@ -162,13 +141,6 @@
         "summary": "Send a precompiled letter (a ready-made PDF)",
         "description": "Send a precompiled letter (a ready-made PDF)",
         "parameters": [
-          {
-            "name": "x-proxy-key",
-            "in": "header",
-            "required": false,
-            "x-ms-summary": "x-proxy-key",
-            "type": "string"
-          },
           {
             "name": "body",
             "in": "body",
@@ -203,13 +175,6 @@
             "in": "path",
             "required": true,
             "x-ms-summary": "notification_id",
-            "type": "string"
-          },
-          {
-            "name": "x-proxy-key",
-            "in": "header",
-            "required": false,
-            "x-ms-summary": "x-proxy-key",
             "type": "string"
           }
         ],
@@ -293,13 +258,6 @@
             "description": "Include messages sent from an uploaded CSV file.",
             "x-ms-summary": "Include messages sent from an uploaded CSV file",
             "type": "boolean"
-          },
-          {
-            "name": "x-proxy-key",
-            "in": "header",
-            "required": false,
-            "x-ms-summary": "x-proxy-key",
-            "type": "string"
           }
         ],
         "responses": {
@@ -327,13 +285,6 @@
             "in": "path",
             "required": true,
             "x-ms-summary": "notification_id",
-            "type": "string"
-          },
-          {
-            "name": "x-proxy-key",
-            "in": "header",
-            "required": false,
-            "x-ms-summary": "x-proxy-key",
             "type": "string"
           }
         ],
@@ -370,13 +321,6 @@
             "description": "Return the next page: messages older than this message ID.",
             "x-ms-summary": "Return the next page: messages older than this message ID",
             "type": "string"
-          },
-          {
-            "name": "x-proxy-key",
-            "in": "header",
-            "required": false,
-            "x-ms-summary": "x-proxy-key",
-            "type": "string"
           }
         ],
         "responses": {
@@ -411,13 +355,6 @@
               "sms",
               "letter"
             ]
-          },
-          {
-            "name": "x-proxy-key",
-            "in": "header",
-            "required": false,
-            "x-ms-summary": "x-proxy-key",
-            "type": "string"
           }
         ],
         "responses": {
@@ -445,13 +382,6 @@
             "in": "path",
             "required": true,
             "x-ms-summary": "template_id",
-            "type": "string"
-          },
-          {
-            "name": "x-proxy-key",
-            "in": "header",
-            "required": false,
-            "x-ms-summary": "x-proxy-key",
             "type": "string"
           }
         ],
@@ -488,13 +418,6 @@
             "required": true,
             "x-ms-summary": "version",
             "type": "integer"
-          },
-          {
-            "name": "x-proxy-key",
-            "in": "header",
-            "required": false,
-            "x-ms-summary": "x-proxy-key",
-            "type": "string"
           }
         ],
         "responses": {
@@ -522,13 +445,6 @@
             "in": "path",
             "required": true,
             "x-ms-summary": "template_id",
-            "type": "string"
-          },
-          {
-            "name": "x-proxy-key",
-            "in": "header",
-            "required": false,
-            "x-ms-summary": "x-proxy-key",
             "type": "string"
           },
           {

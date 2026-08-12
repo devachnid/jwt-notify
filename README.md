@@ -93,8 +93,38 @@ python scripts/build_connector_swagger.py --host notify-proxy.example.com
 Import that file in the Azure portal under **Logic Apps custom connector →
 Create → Import an OpenAPI file**. Set the connector's security to **API Key**,
 header name `X-Proxy-Key`, and supply the secret when creating the connection.
-If Cloudflare Access is doing the authenticating instead, use its service-token
-headers here.
+
+### Behind Cloudflare Access
+
+A Cloudflare Access service token is two headers, `CF-Access-Client-Id` and
+`CF-Access-Client-Secret`, but a custom connector can bind only **one** header
+to its API key. Generate the connector with the client id and the two are split
+between the mechanisms that can carry them:
+
+```bash
+python scripts/build_connector_swagger.py \
+  --host notify-proxy.example.com \
+  --cf-access-client-id 'abc123....access'
+```
+
+* `CF-Access-Client-Secret` becomes the connector's API key, so it is entered
+  when creating the connection and stored encrypted, never in the definition.
+* `CF-Access-Client-Id` is emitted as a fixed header on every operation, marked
+  `x-ms-visibility: internal` so it is sent automatically and stays out of the
+  designer.
+
+Import as above, then set security to **API Key** with header name
+`CF-Access-Client-Secret` and paste the Client Secret when creating the
+connection.
+
+The client id ends up inside the connector definition, so anyone who can edit
+the connector in your subscription can read it. On its own it is only half the
+credential — Access rejects it without the matching secret — but treat the
+definition as sensitive and rotate the service token if it leaks.
+
+With Access in front, leave `PROXY_KEY` unset: Cloudflare authenticates before
+traffic reaches the origin, and the connector has no second slot to carry an
+`X-Proxy-Key` as well. Anything reaching the app has already passed Access.
 
 `POST /token` is left out of the connector by default — handing it the ability
 to mint bare tokens invites exactly the pattern the proxy exists to remove. Pass

@@ -125,12 +125,21 @@ def convert_parameter(param: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def convert_operation(method: str, operation: dict[str, Any]) -> dict[str, Any]:
+def convert_operation(
+    method: str,
+    operation: dict[str, Any],
+    extra_headers: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    parameters = [convert_parameter(p) for p in operation.get("parameters", [])]
+    # Copied per operation: Swagger 2.0 has no way to declare a header once for
+    # the whole document, and the connector designer reads them per operation.
+    parameters.extend(dict(header) for header in extra_headers or [])
+
     out: dict[str, Any] = {
         "operationId": operation.get("operationId", ""),
         "summary": operation.get("summary", ""),
         "description": operation.get("description", operation.get("summary", "")),
-        "parameters": [convert_parameter(p) for p in operation.get("parameters", [])],
+        "parameters": parameters,
         "responses": {},
     }
 
@@ -172,8 +181,62 @@ def convert_operation(method: str, operation: dict[str, Any]) -> dict[str, Any]:
 EXCLUDED_BY_DEFAULT = {"CreateToken"}
 
 
-def build(host: str, scheme: str = "https", include_all: bool = False) -> dict[str, Any]:
+PROXY_KEY_SECURITY = {
+    "proxyKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Proxy-Key",
+        "description": (
+            "Shared secret for this proxy. Leave the connector's API key blank "
+            "if the service is protected by Cloudflare Access instead."
+        ),
+    }
+}
+
+CLOUDFLARE_SECURITY = {
+    "cfAccessClientSecret": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "CF-Access-Client-Secret",
+        "description": (
+            "The Client Secret half of a Cloudflare Access service token. "
+            "Entered when creating the connection and stored encrypted; the "
+            "Client Id half travels as a fixed header on every operation."
+        ),
+    }
+}
+
+
+def cloudflare_client_id_header(client_id: str) -> dict[str, Any]:
+    """A fixed CF-Access-Client-Id header, hidden from the Logic App designer.
+
+    A custom connector can only bind one header to its API key, so the service
+    token is split: the secret goes in the connection, and the id rides along
+    as a constant here.
+    """
+    return {
+        "name": "CF-Access-Client-Id",
+        "in": "header",
+        "required": True,
+        "type": "string",
+        "default": client_id,
+        "description": "Client Id half of the Cloudflare Access service token.",
+        "x-ms-summary": "Cloudflare Access Client Id",
+        "x-ms-visibility": "internal",
+    }
+
+
+def build(
+    host: str,
+    scheme: str = "https",
+    include_all: bool = False,
+    cf_access_client_id: str | None = None,
+) -> dict[str, Any]:
     source = app.openapi()
+
+    extra_headers: list[dict[str, Any]] = []
+    if cf_access_client_id:
+        extra_headers.append(cloudflare_client_id_header(cf_access_client_id))
 
     paths: dict[str, Any] = {}
     for path, operations in source["paths"].items():
@@ -183,7 +246,7 @@ def build(host: str, scheme: str = "https", include_all: bool = False) -> dict[s
                 continue
             if not include_all and operation.get("operationId") in EXCLUDED_BY_DEFAULT:
                 continue
-            converted_ops[method] = convert_operation(method, operation)
+            converted_ops[method] = convert_operation(method, operation, extra_headers)
         if converted_ops:
             paths[path] = converted_ops
 
@@ -204,18 +267,12 @@ def build(host: str, scheme: str = "https", include_all: bool = False) -> dict[s
         "schemes": [scheme],
         "consumes": ["application/json"],
         "produces": ["application/json"],
-        "securityDefinitions": {
-            "proxyKey": {
-                "type": "apiKey",
-                "in": "header",
-                "name": "X-Proxy-Key",
-                "description": (
-                    "Shared secret for this proxy. Leave the connector's API key "
-                    "blank if the service is protected by Cloudflare Access instead."
-                ),
-            }
-        },
-        "security": [{"proxyKey": []}],
+        "securityDefinitions": (
+            CLOUDFLARE_SECURITY if cf_access_client_id else PROXY_KEY_SECURITY
+        ),
+        "security": [
+            {"cfAccessClientSecret": []} if cf_access_client_id else {"proxyKey": []}
+        ],
         "paths": paths,
         "definitions": definitions,
     }
@@ -236,9 +293,18 @@ def main() -> int:
         dest="include_all",
         help=f"Also include operations left out by default ({', '.join(sorted(EXCLUDED_BY_DEFAULT))}).",
     )
+    parser.add_argument(
+        "--cf-access-client-id",
+        help=(
+            "Cloudflare Access service token Client Id. Sends it as a fixed "
+            "header on every operation and switches the connector's API key to "
+            "CF-Access-Client-Secret. The Client Id ends up in the connector "
+            "definition, so treat that definition as sensitive."
+        ),
+    )
     args = parser.parse_args()
 
-    document = build(args.host, args.scheme, args.include_all)
+    document = build(args.host, args.scheme, args.include_all, args.cf_access_client_id)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(document, indent=2) + "\n")
     print(f"wrote {args.output} ({len(document['paths'])} paths, host {args.host})")

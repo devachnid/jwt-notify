@@ -117,6 +117,57 @@ def test_path_parameters_are_required(document):
     assert [p["required"] for p in params if p["name"] == "notification_id"] == [True]
 
 
+# --- Cloudflare Access variant ----------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def cloudflare_document():
+    return build("notify.example.com", cf_access_client_id="abc123.access")
+
+
+def test_cloudflare_variant_is_valid(cloudflare_document):
+    validate(cloudflare_document)
+
+
+def test_cloudflare_secret_becomes_the_connection_credential(cloudflare_document):
+    scheme = cloudflare_document["securityDefinitions"]["cfAccessClientSecret"]
+    assert scheme["name"] == "CF-Access-Client-Secret"
+    assert scheme["type"] == "apiKey"
+    assert scheme["in"] == "header"
+    assert cloudflare_document["security"] == [{"cfAccessClientSecret": []}]
+    assert "proxyKey" not in cloudflare_document["securityDefinitions"]
+
+
+def test_cloudflare_client_id_rides_on_every_operation(cloudflare_document):
+    """The connector can only bind one header to its API key, so the id is fixed."""
+    for path, operations in cloudflare_document["paths"].items():
+        for method, operation in operations.items():
+            headers = {
+                p["name"]: p for p in operation["parameters"] if p["in"] == "header"
+            }
+            assert "CF-Access-Client-Id" in headers, f"missing on {method} {path}"
+            header = headers["CF-Access-Client-Id"]
+            assert header["default"] == "abc123.access"
+            assert header["required"] is True
+            # Hidden in the designer so it is sent without anyone editing it.
+            assert header["x-ms-visibility"] == "internal"
+
+
+def test_operations_are_the_same_in_both_variants(document, cloudflare_document):
+    assert operation_ids(cloudflare_document) == operation_ids(document)
+
+
+def test_no_cloudflare_headers_without_the_flag(document):
+    headers = [
+        p["name"]
+        for ops in document["paths"].values()
+        for op in ops.values()
+        for p in op["parameters"]
+        if p["in"] == "header"
+    ]
+    assert headers == []
+
+
 def test_committed_file_matches_the_generator(document):
     """connector/swagger.json is generated — regenerate it after changing routes."""
     committed = json.loads(COMMITTED.read_text())

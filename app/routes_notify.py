@@ -42,7 +42,9 @@ def get_client(request: Request) -> NotifyClient:
 
 async def require_proxy_key(
     request: Request,
-    x_proxy_key: Annotated[str | None, Header()] = None,
+    # Hidden from the schema: the connector supplies this from its configured
+    # credential, so surfacing it per operation would only invite confusion.
+    x_proxy_key: Annotated[str | None, Header(include_in_schema=False)] = None,
 ) -> None:
     """Check the shared secret, when one is configured.
 
