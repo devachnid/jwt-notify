@@ -1,0 +1,824 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "Notify JWT service",
+    "description": "Signs requests to the GOV.UK Notify API. The /v2 routes mirror Notify's own and add the JWT, so a caller that can only hold a static credential never has to deal with a token that expires after 30 seconds. POST /token returns a bare token instead, for callers that want to make the onward call themselves.",
+    "version": "2.0.0"
+  },
+  "host": "notify-proxy.example.com",
+  "basePath": "/",
+  "schemes": [
+    "https"
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "securityDefinitions": {
+    "proxyKey": {
+      "type": "apiKey",
+      "in": "header",
+      "name": "X-Proxy-Key",
+      "description": "Shared secret for this proxy. Leave the connector's API key blank if the service is protected by Cloudflare Access instead."
+    }
+  },
+  "security": [
+    {
+      "proxyKey": []
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "GetHealth",
+        "summary": "Health",
+        "description": "Health",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "schema": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Response Gethealth"
+            }
+          }
+        }
+      }
+    },
+    "/v2/notifications/sms": {
+      "post": {
+        "operationId": "SendSms",
+        "summary": "Send a text message",
+        "description": "Send a text message",
+        "parameters": [
+          {
+            "name": "x-proxy-key",
+            "in": "header",
+            "required": false,
+            "x-ms-summary": "x-proxy-key",
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/SmsRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "schema": {}
+          },
+          "422": {
+            "description": "Validation Error",
+            "schema": {
+              "$ref": "#/definitions/HTTPValidationError"
+            }
+          }
+        }
+      }
+    },
+    "/v2/notifications/email": {
+      "post": {
+        "operationId": "SendEmail",
+        "summary": "Send an email",
+        "description": "Send an email",
+        "parameters": [
+          {
+            "name": "x-proxy-key",
+            "in": "header",
+            "required": false,
+            "x-ms-summary": "x-proxy-key",
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/EmailRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "schema": {}
+          },
+          "422": {
+            "description": "Validation Error",
+            "schema": {
+              "$ref": "#/definitions/HTTPValidationError"
+            }
+          }
+        }
+      }
+    },
+    "/v2/notifications/letter": {
+      "post": {
+        "operationId": "SendLetter",
+        "summary": "Send a letter from a template",
+        "description": "Send a letter from a template",
+        "parameters": [
+          {
+            "name": "x-proxy-key",
+            "in": "header",
+            "required": false,
+            "x-ms-summary": "x-proxy-key",
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/LetterRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "schema": {}
+          },
+          "422": {
+            "description": "Validation Error",
+            "schema": {
+              "$ref": "#/definitions/HTTPValidationError"
+            }
+          }
+        }
+      }
+    },
+    "/v2/notifications/letter/precompiled": {
+      "post": {
+        "operationId": "SendPrecompiledLetter",
+        "summary": "Send a precompiled letter (a ready-made PDF)",
+        "description": "Send a precompiled letter (a ready-made PDF)",
+        "parameters": [
+          {
+            "name": "x-proxy-key",
+            "in": "header",
+            "required": false,
+            "x-ms-summary": "x-proxy-key",
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/PrecompiledLetterRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "schema": {}
+          },
+          "422": {
+            "description": "Validation Error",
+            "schema": {
+              "$ref": "#/definitions/HTTPValidationError"
+            }
+          }
+        }
+      }
+    },
+    "/v2/notifications/{notification_id}": {
+      "get": {
+        "operationId": "GetNotification",
+        "summary": "Get the status of one message",
+        "description": "Get the status of one message",
+        "parameters": [
+          {
+            "name": "notification_id",
+            "in": "path",
+            "required": true,
+            "x-ms-summary": "notification_id",
+            "type": "string"
+          },
+          {
+            "name": "x-proxy-key",
+            "in": "header",
+            "required": false,
+            "x-ms-summary": "x-proxy-key",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "schema": {}
+          },
+          "422": {
+            "description": "Validation Error",
+            "schema": {
+              "$ref": "#/definitions/HTTPValidationError"
+            }
+          }
+        }
+      }
+    },
+    "/v2/notifications": {
+      "get": {
+        "operationId": "GetNotifications",
+        "summary": "Get the status of multiple messages",
+        "description": "Get the status of multiple messages",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "Filter by delivery status.",
+            "x-ms-summary": "Filter by delivery status",
+            "type": "string",
+            "enum": [
+              "accepted",
+              "created",
+              "sending",
+              "pending",
+              "sent",
+              "received",
+              "delivered",
+              "cancelled",
+              "pending-virus-check",
+              "virus-scan-failed",
+              "validation-failed",
+              "permanent-failure",
+              "temporary-failure",
+              "technical-failure"
+            ]
+          },
+          {
+            "name": "template_type",
+            "in": "query",
+            "required": false,
+            "description": "Filter by message type.",
+            "x-ms-summary": "Filter by message type",
+            "type": "string",
+            "enum": [
+              "email",
+              "sms",
+              "letter"
+            ]
+          },
+          {
+            "name": "reference",
+            "in": "query",
+            "required": false,
+            "description": "Filter by your own reference.",
+            "x-ms-summary": "Filter by your own reference",
+            "type": "string"
+          },
+          {
+            "name": "older_than",
+            "in": "query",
+            "required": false,
+            "description": "Return the next page: messages older than this notification ID.",
+            "x-ms-summary": "Return the next page: messages older than this notification ID",
+            "type": "string"
+          },
+          {
+            "name": "include_jobs",
+            "in": "query",
+            "required": false,
+            "description": "Include messages sent from an uploaded CSV file.",
+            "x-ms-summary": "Include messages sent from an uploaded CSV file",
+            "type": "boolean"
+          },
+          {
+            "name": "x-proxy-key",
+            "in": "header",
+            "required": false,
+            "x-ms-summary": "x-proxy-key",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "schema": {}
+          },
+          "422": {
+            "description": "Validation Error",
+            "schema": {
+              "$ref": "#/definitions/HTTPValidationError"
+            }
+          }
+        }
+      }
+    },
+    "/v2/notifications/{notification_id}/pdf": {
+      "get": {
+        "operationId": "GetLetterPdf",
+        "summary": "Get a letter as a PDF",
+        "description": "Get a letter as a PDF",
+        "parameters": [
+          {
+            "name": "notification_id",
+            "in": "path",
+            "required": true,
+            "x-ms-summary": "notification_id",
+            "type": "string"
+          },
+          {
+            "name": "x-proxy-key",
+            "in": "header",
+            "required": false,
+            "x-ms-summary": "x-proxy-key",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "schema": {
+              "type": "string",
+              "format": "binary"
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "schema": {
+              "$ref": "#/definitions/HTTPValidationError"
+            }
+          }
+        },
+        "produces": [
+          "application/pdf"
+        ]
+      }
+    },
+    "/v2/received-text-messages": {
+      "get": {
+        "operationId": "GetReceivedTextMessages",
+        "summary": "Get received text messages",
+        "description": "Get received text messages",
+        "parameters": [
+          {
+            "name": "older_than",
+            "in": "query",
+            "required": false,
+            "description": "Return the next page: messages older than this message ID.",
+            "x-ms-summary": "Return the next page: messages older than this message ID",
+            "type": "string"
+          },
+          {
+            "name": "x-proxy-key",
+            "in": "header",
+            "required": false,
+            "x-ms-summary": "x-proxy-key",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "schema": {}
+          },
+          "422": {
+            "description": "Validation Error",
+            "schema": {
+              "$ref": "#/definitions/HTTPValidationError"
+            }
+          }
+        }
+      }
+    },
+    "/v2/templates": {
+      "get": {
+        "operationId": "GetTemplates",
+        "summary": "Get all templates",
+        "description": "Get all templates",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "description": "Filter by template type.",
+            "x-ms-summary": "Filter by template type",
+            "type": "string",
+            "enum": [
+              "email",
+              "sms",
+              "letter"
+            ]
+          },
+          {
+            "name": "x-proxy-key",
+            "in": "header",
+            "required": false,
+            "x-ms-summary": "x-proxy-key",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "schema": {}
+          },
+          "422": {
+            "description": "Validation Error",
+            "schema": {
+              "$ref": "#/definitions/HTTPValidationError"
+            }
+          }
+        }
+      }
+    },
+    "/v2/template/{template_id}": {
+      "get": {
+        "operationId": "GetTemplate",
+        "summary": "Get a template",
+        "description": "Get a template",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "x-ms-summary": "template_id",
+            "type": "string"
+          },
+          {
+            "name": "x-proxy-key",
+            "in": "header",
+            "required": false,
+            "x-ms-summary": "x-proxy-key",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "schema": {}
+          },
+          "422": {
+            "description": "Validation Error",
+            "schema": {
+              "$ref": "#/definitions/HTTPValidationError"
+            }
+          }
+        }
+      }
+    },
+    "/v2/template/{template_id}/version/{version}": {
+      "get": {
+        "operationId": "GetTemplateVersion",
+        "summary": "Get a specific version of a template",
+        "description": "Get a specific version of a template",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "x-ms-summary": "template_id",
+            "type": "string"
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "x-ms-summary": "version",
+            "type": "integer"
+          },
+          {
+            "name": "x-proxy-key",
+            "in": "header",
+            "required": false,
+            "x-ms-summary": "x-proxy-key",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "schema": {}
+          },
+          "422": {
+            "description": "Validation Error",
+            "schema": {
+              "$ref": "#/definitions/HTTPValidationError"
+            }
+          }
+        }
+      }
+    },
+    "/v2/template/{template_id}/preview": {
+      "post": {
+        "operationId": "PreviewTemplate",
+        "summary": "Preview a template with personalisation applied",
+        "description": "Preview a template with personalisation applied",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "x-ms-summary": "template_id",
+            "type": "string"
+          },
+          {
+            "name": "x-proxy-key",
+            "in": "header",
+            "required": false,
+            "x-ms-summary": "x-proxy-key",
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/TemplatePreviewRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "schema": {}
+          },
+          "422": {
+            "description": "Validation Error",
+            "schema": {
+              "$ref": "#/definitions/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "EmailRequest": {
+      "properties": {
+        "email_address": {
+          "type": "string",
+          "maxLength": 250,
+          "minLength": 5,
+          "title": "Email Address",
+          "description": "Email address of the recipient."
+        },
+        "template_id": {
+          "type": "string",
+          "title": "Template Id",
+          "description": "ID of the email template."
+        },
+        "personalisation": {
+          "title": "Personalisation",
+          "description": "Values for the template's placeholders. Values may be strings, numbers, or a list (rendered as bullet points). To attach a file, pass an object with a base64 'file' key, plus optional 'filename', 'confirm_email_before_download' and 'retention_period'.",
+          "additionalProperties": true,
+          "type": "object",
+          "x-nullable": true
+        },
+        "reference": {
+          "title": "Reference",
+          "description": "Your own identifier for a notification or batch of notifications. Must not contain personal information.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "email_reply_to_id": {
+          "title": "Email Reply To Id",
+          "description": "ID of a reply-to address configured on your service. Leave out to use the default.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "one_click_unsubscribe_url": {
+          "title": "One Click Unsubscribe Url",
+          "description": "URL that unsubscribes the recipient in response to an empty POST. Required for subscription emails.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "sanitise_content_for": {
+          "title": "Sanitise Content For",
+          "description": "Names of personalisation fields whose content Notify should sanitise: Markdown is escaped and URLs are removed.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "x-nullable": true
+        }
+      },
+      "additionalProperties": true,
+      "type": "object",
+      "required": [
+        "email_address",
+        "template_id"
+      ],
+      "title": "EmailRequest"
+    },
+    "HTTPValidationError": {
+      "properties": {
+        "detail": {
+          "items": {
+            "$ref": "#/definitions/ValidationError"
+          },
+          "type": "array",
+          "title": "Detail"
+        }
+      },
+      "type": "object",
+      "title": "HTTPValidationError"
+    },
+    "LetterRequest": {
+      "properties": {
+        "template_id": {
+          "type": "string",
+          "title": "Template Id",
+          "description": "ID of the letter template."
+        },
+        "personalisation": {
+          "additionalProperties": true,
+          "type": "object",
+          "title": "Personalisation",
+          "description": "The recipient's address plus any template placeholders. The address needs at least three lines: address_line_1 and address_line_2 must contain alphanumeric characters, and the last line used must be a UK postcode or a country outside the UK."
+        },
+        "reference": {
+          "title": "Reference",
+          "description": "Your own identifier for a notification or batch of notifications. Must not contain personal information.",
+          "type": "string",
+          "x-nullable": true
+        }
+      },
+      "additionalProperties": true,
+      "type": "object",
+      "required": [
+        "template_id",
+        "personalisation"
+      ],
+      "title": "LetterRequest",
+      "description": "A letter built from a template."
+    },
+    "PrecompiledLetterRequest": {
+      "properties": {
+        "reference": {
+          "type": "string",
+          "title": "Reference",
+          "description": "Your own identifier for a notification or batch of notifications. Must not contain personal information."
+        },
+        "content": {
+          "type": "string",
+          "title": "Content",
+          "description": "The letter as a base64 encoded PDF."
+        },
+        "postage": {
+          "title": "Postage",
+          "description": "Postage class, for example 'first' or 'second'.",
+          "type": "string",
+          "x-nullable": true
+        }
+      },
+      "additionalProperties": true,
+      "type": "object",
+      "required": [
+        "reference",
+        "content"
+      ],
+      "title": "PrecompiledLetterRequest",
+      "description": "A letter supplied as a ready-made PDF.\n\nNotify accepts this on the same endpoint as a templated letter; it is a\nseparate operation here so that each has a single, unambiguous schema for\nthe Azure custom connector."
+    },
+    "SmsRequest": {
+      "properties": {
+        "phone_number": {
+          "type": "string",
+          "maxLength": 15,
+          "minLength": 7,
+          "title": "Phone Number",
+          "description": "Phone number of the recipient. UK or international.",
+          "example": "+447900900123"
+        },
+        "template_id": {
+          "type": "string",
+          "title": "Template Id",
+          "description": "ID of the text message template.",
+          "example": "f33517ff-2a88-4f6e-b855-c550268ce08a"
+        },
+        "personalisation": {
+          "title": "Personalisation",
+          "description": "Values for the template's placeholders. Values may be strings, numbers, or a list (rendered as bullet points). To attach a file, pass an object with a base64 'file' key, plus optional 'filename', 'confirm_email_before_download' and 'retention_period'.",
+          "additionalProperties": true,
+          "type": "object",
+          "x-nullable": true
+        },
+        "reference": {
+          "title": "Reference",
+          "description": "Your own identifier for a notification or batch of notifications. Must not contain personal information.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "sms_sender_id": {
+          "title": "Sms Sender Id",
+          "description": "ID of a text message sender configured on your service. Leave out to use the default sender.",
+          "type": "string",
+          "x-nullable": true
+        }
+      },
+      "additionalProperties": true,
+      "type": "object",
+      "required": [
+        "phone_number",
+        "template_id"
+      ],
+      "title": "SmsRequest"
+    },
+    "TemplatePreviewRequest": {
+      "properties": {
+        "personalisation": {
+          "title": "Personalisation",
+          "description": "Values for the template's placeholders. Values may be strings, numbers, or a list (rendered as bullet points). To attach a file, pass an object with a base64 'file' key, plus optional 'filename', 'confirm_email_before_download' and 'retention_period'.",
+          "additionalProperties": true,
+          "type": "object",
+          "x-nullable": true
+        }
+      },
+      "additionalProperties": true,
+      "type": "object",
+      "title": "TemplatePreviewRequest"
+    },
+    "TokenRequest": {
+      "properties": {
+        "api_key": {
+          "type": "string",
+          "minLength": 1,
+          "title": "Api Key",
+          "description": "A Notify API key: {key_name}-{iss-uuid}-{secret-key-uuid}"
+        }
+      },
+      "type": "object",
+      "required": [
+        "api_key"
+      ],
+      "title": "TokenRequest"
+    },
+    "TokenResponse": {
+      "properties": {
+        "token": {
+          "type": "string",
+          "title": "Token"
+        },
+        "key_name": {
+          "type": "string",
+          "title": "Key Name"
+        },
+        "iss": {
+          "type": "string",
+          "title": "Iss"
+        },
+        "iat": {
+          "type": "integer",
+          "title": "Iat"
+        },
+        "expires_in": {
+          "type": "integer",
+          "title": "Expires In"
+        }
+      },
+      "type": "object",
+      "required": [
+        "token",
+        "key_name",
+        "iss",
+        "iat",
+        "expires_in"
+      ],
+      "title": "TokenResponse"
+    },
+    "ValidationError": {
+      "properties": {
+        "loc": {
+          "items": {},
+          "type": "array",
+          "title": "Location"
+        },
+        "msg": {
+          "type": "string",
+          "title": "Message"
+        },
+        "type": {
+          "type": "string",
+          "title": "Error Type"
+        },
+        "input": {
+          "title": "Input"
+        },
+        "ctx": {
+          "type": "object",
+          "title": "Context"
+        }
+      },
+      "type": "object",
+      "required": [
+        "loc",
+        "msg",
+        "type"
+      ],
+      "title": "ValidationError"
+    }
+  }
+}

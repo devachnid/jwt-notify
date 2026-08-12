@@ -43,6 +43,13 @@ APP_DIR="${APP_DIR:-/opt/jwt-notify}"
 SERVICE_USER="${SERVICE_USER:-jwtnotify}"
 PORT="${PORT:-8000}"
 
+# Service configuration. Both are optional: without NOTIFY_API_KEY the proxy
+# routes return 503 and only /token works, and without PROXY_KEY the proxy
+# trusts whatever front end sits in front of it.
+NOTIFY_API_KEY="${NOTIFY_API_KEY:-}"
+PROXY_KEY="${PROXY_KEY:-}"
+ENV_FILE="${ENV_FILE:-/etc/jwt-notify.env}"
+
 START_ON_BOOT="${START_ON_BOOT:-1}"
 
 # --- helpers -----------------------------------------------------------------
@@ -168,6 +175,21 @@ log "creating service user"
 in_ct_sh "id -u ${SERVICE_USER} >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin ${SERVICE_USER}
 chown -R ${SERVICE_USER}:${SERVICE_USER} ${APP_DIR}"
 
+log "writing $ENV_FILE"
+# Written via stdin rather than the command line so the key does not appear in
+# the container's process list, and kept readable by root only.
+# shellcheck disable=SC2016  # these expand inside the container, not on the host
+pct exec "$VMID" -- env NOTIFY_API_KEY="$NOTIFY_API_KEY" PROXY_KEY="$PROXY_KEY" \
+    ENV_FILE="$ENV_FILE" bash -euo pipefail -c '
+umask 077
+: > "$ENV_FILE"
+[ -n "$NOTIFY_API_KEY" ] && printf "NOTIFY_API_KEY=%s\n" "$NOTIFY_API_KEY" >> "$ENV_FILE"
+[ -n "$PROXY_KEY" ] && printf "PROXY_KEY=%s\n" "$PROXY_KEY" >> "$ENV_FILE"
+chown root:root "$ENV_FILE"
+chmod 600 "$ENV_FILE"
+exit 0
+'
+
 log "installing systemd unit"
 in_ct_sh "cat > /etc/systemd/system/jwt-notify.service <<UNIT
 [Unit]
@@ -179,6 +201,7 @@ Wants=network-online.target
 Type=exec
 User=${SERVICE_USER}
 WorkingDirectory=${APP_DIR}
+EnvironmentFile=-${ENV_FILE}
 ExecStart=${APP_DIR}/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port ${PORT}
 Restart=on-failure
 RestartSec=2
@@ -228,8 +251,18 @@ cat <<SUMMARY
   Health      curl http://${CT_IP:-<ip>}:${PORT}/health
   Docs        http://${CT_IP:-<ip>}:${PORT}/docs
   Logs        pct exec $VMID -- journalctl -u jwt-notify -f
+  Config      $ENV_FILE (in the container), then systemctl restart jwt-notify
   Update      pct exec $VMID -- bash -c 'git -C ${APP_DIR} pull && systemctl restart jwt-notify'
 SUMMARY
+
+if [ -z "$NOTIFY_API_KEY" ]; then
+    warn "no NOTIFY_API_KEY was given, so the /v2 proxy routes will return 503."
+    warn "add it to $ENV_FILE in the container and restart the service."
+elif [ -z "$PROXY_KEY" ]; then
+    warn "no PROXY_KEY was given: anyone who can reach the service can send"
+    warn "messages as your Notify service. Set one, or put an authenticating"
+    warn "front end in front of it."
+fi
 
 if [ -n "${GENERATED_PASSWORD:-}" ]; then
     echo "  Root pw     ${PASSWORD}"
