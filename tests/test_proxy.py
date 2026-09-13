@@ -303,3 +303,93 @@ def test_proxy_key_rejects_the_wrong_secret(upstream):
 def test_health_does_not_need_the_proxy_key(upstream):
     client = build_client(upstream, proxy_key="s3cret")
     assert client.get("/health").status_code == 200
+
+
+# --- envelope mode -----------------------------------------------------------
+
+ENVELOPE = {"X-Notify-Envelope": "true"}
+
+
+def test_envelope_wraps_a_successful_send(client, upstream):
+    upstream.status_code = 201
+    upstream.json_body = {"id": "n-1", "reference": "ref-1", "content": {"body": "hello"}}
+    response = client.post("/v2/notifications/sms", json=SMS_BODY, headers=ENVELOPE)
+    assert response.status_code == 200
+    assert response.json() == {
+        "status_code": 201,
+        "success": True,
+        "body": {"id": "n-1", "reference": "ref-1", "content": {"body": "hello"}},
+        "errors": [],
+    }
+
+
+def test_envelope_turns_a_rejection_into_a_readable_200(client, upstream):
+    upstream.status_code = 400
+    upstream.json_body = {
+        "errors": [{"error": "ValidationError", "message": "phone_number Too many digits"}],
+        "status_code": 400,
+    }
+    response = client.post("/v2/notifications/sms", json=SMS_BODY, headers=ENVELOPE)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status_code"] == 400
+    assert body["success"] is False
+    assert body["errors"] == [
+        {"error": "ValidationError", "message": "phone_number Too many digits"}
+    ]
+    # Notify's own body is kept whole alongside the lifted errors.
+    assert body["body"]["status_code"] == 400
+
+
+def test_envelope_reports_notify_being_unreachable(client, upstream):
+    upstream.raises = httpx.ConnectError("no route")
+    response = client.post("/v2/notifications/sms", json=SMS_BODY, headers=ENVELOPE)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status_code"] == 502
+    assert body["success"] is False
+    assert body["body"] is None
+    assert body["errors"][0]["error"] == "NotifyUnavailableError"
+
+
+def test_envelope_wraps_a_read_as_well_as_a_send(client, upstream):
+    upstream.status_code = 200
+    upstream.json_body = {"id": "n-1", "status": "delivered"}
+    response = client.get("/v2/notifications/n-1", headers=ENVELOPE)
+    assert response.json()["body"]["status"] == "delivered"
+    assert response.json()["status_code"] == 200
+
+
+def test_envelope_leaves_a_pdf_alone(client, upstream):
+    upstream.status_code = 200
+    upstream.content = b"%PDF-1.7 fake"
+    upstream.content_type = "application/pdf"
+    response = client.get("/v2/notifications/n-1/pdf", headers=ENVELOPE)
+    assert response.content == b"%PDF-1.7 fake"
+    assert response.headers["content-type"].startswith("application/pdf")
+
+
+@pytest.mark.parametrize("value", ["true", "TRUE", "1", "yes", "on"])
+def test_envelope_header_accepts_the_usual_spellings(client, upstream, value):
+    response = client.post(
+        "/v2/notifications/sms", json=SMS_BODY, headers={"X-Notify-Envelope": value}
+    )
+    assert response.status_code == 200
+    assert response.json()["status_code"] == 201
+
+
+@pytest.mark.parametrize("value", ["false", "0", "", "no"])
+def test_anything_else_leaves_the_response_untouched(client, upstream, value):
+    response = client.post(
+        "/v2/notifications/sms", json=SMS_BODY, headers={"X-Notify-Envelope": value}
+    )
+    assert response.status_code == 201
+    assert "status_code" not in response.json()
+
+
+def test_passthrough_is_the_default(client, upstream):
+    upstream.status_code = 400
+    upstream.json_body = {"errors": [{"error": "ValidationError", "message": "no"}]}
+    response = client.post("/v2/notifications/sms", json=SMS_BODY)
+    assert response.status_code == 400
+    assert "success" not in response.json()

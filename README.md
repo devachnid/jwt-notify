@@ -18,10 +18,12 @@ Logic App ──static secret──▶ jwt-notify ──fresh JWT──▶ GOV.U
 
 ## Proxy API
 
-The proxy paths and payloads are Notify's own, so
+The proxy paths, payloads and responses are Notify's own, so
 [Notify's REST API documentation](https://docs.notifications.service.gov.uk/rest-api.html)
-describes them accurately. Responses are passed through untouched, including
-Notify's validation errors and rate-limit responses.
+describes them accurately. Responses are passed through untouched — status code
+and body — including Notify's validation errors and rate-limit responses. A send
+therefore answers `201` with the notification's id, and a rejected one `400`
+with the reason, exactly as Notify does.
 
 | Operation | Route |
 | --------- | ----- |
@@ -93,6 +95,69 @@ python scripts/build_connector_swagger.py --host notify-proxy.example.com
 Import that file in the Azure portal under **Logic Apps custom connector →
 Create → Import an OpenAPI file**. Set the connector's security to **API Key**,
 header name `X-Proxy-Key`, and supply the secret when creating the connection.
+
+### Reading the response in a Logic App
+
+Each operation declares the status codes and body schema Notify actually
+returns, which is what the designer reads to build an action's output fields:
+`SendSms` is `201` with `id`, `reference`, `uri`, `template` and `content`, and
+`400`, `403`, `429` or `500` with `status_code` and an `errors` list. Pick them
+straight from the dynamic content list, or by expression:
+
+```
+@body('SendSms')?['id']
+@outputs('SendSms')?['statusCode']
+```
+
+If you change the routes, regenerate the connector and re-import it — a
+connector built before this will still show its old outputs.
+
+### Getting the status and the error detail as fields
+
+A Logic App action that receives a `4xx` is a **failed** action: the run stops
+there unless the next step is configured to run after a failure, and Notify's
+explanation is awkward to reach. When the flow needs to decide for itself,
+generate the connector in envelope mode:
+
+```bash
+python scripts/build_connector_swagger.py \
+  --host notify-proxy.example.com \
+  --envelope
+```
+
+Every operation then asks for `X-Notify-Envelope: true` — a fixed header, hidden
+from the designer — and always comes back `200`, with Notify's answer inside:
+
+```json
+{
+  "status_code": 400,
+  "success": false,
+  "body": { "errors": [ { "error": "ValidationError", "message": "phone_number Too many digits" } ], "status_code": 400 },
+  "errors": [ { "error": "ValidationError", "message": "phone_number Too many digits" } ]
+}
+```
+
+`status_code`, `success`, `errors` and the fields of `body` are all ordinary
+output fields, so a condition on `success` replaces a run-after configuration:
+
+```
+@body('SendSms')?['success']
+@body('SendSms')?['status_code']
+@body('SendSms')?['body']?['id']
+@first(body('SendSms')?['errors'])?['message']
+```
+
+`body` keeps each operation's own schema, so the designer still offers the
+notification's `id`, `reference` and the rest. Not reaching Notify at all is
+reported the same way, as `502` or `504` with an error entry, so the only
+failures left are the ones that happen before Notify is ever called: a request
+this service rejects (`422`), a missing or wrong `X-Proxy-Key` (`401`) and an
+unconfigured `NOTIFY_API_KEY` (`503`). A letter PDF is not wrapped — there is
+nothing sensible to wrap it in — and neither is `/health`.
+
+The mode is per request, not per deployment: the same service serves both
+connectors, and a caller that sends no `X-Notify-Envelope` header keeps the
+passthrough behaviour.
 
 ### Behind Cloudflare Access
 
@@ -188,9 +253,15 @@ Interactive docs are served at `/docs`.
 | `503`  | No `NOTIFY_API_KEY` is configured |
 | `504`  | Notify did not answer within `NOTIFY_TIMEOUT_SECONDS` |
 
-Anything else is Notify's own response, forwarded unchanged — including `400`
-validation errors and `429` rate limits, whose `Retry-After` header is
-preserved.
+Anything else is Notify's own response, forwarded unchanged — including `201`
+for an accepted message, `400` validation errors and `429` rate limits, whose
+`Retry-After` header is preserved.
+
+Send `X-Notify-Envelope: true` and all of that arrives as a `200` instead, with
+the status code and errors in the body; see
+[Getting the status and the error detail as fields](#getting-the-status-and-the-error-detail-as-fields).
+The `422` and `401` rows above still apply — they happen before there is
+anything from Notify to wrap.
 
 ## Token format
 

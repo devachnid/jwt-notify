@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 
 from .api_key import InvalidApiKeyError, parse_api_key
 from .config import load_settings
+from .models import HealthResponse
 from .notify_client import NotifyClient
 from .routes_notify import router as notify_router
 from .tokens import TOKEN_LIFETIME_SECONDS, create_token
@@ -117,12 +118,13 @@ async def invalid_api_key_handler(
     )
 
 
-@app.get("/health", operation_id="GetHealth", tags=["Service"])
-async def health(request: Request) -> dict[str, object]:
-    return {
-        "status": "ok",
-        "proxy_enabled": request.app.state.settings.proxy_enabled,
-    }
+@app.get(
+    "/health", response_model=HealthResponse, operation_id="GetHealth", tags=["Service"]
+)
+async def health(request: Request) -> HealthResponse:
+    return HealthResponse(
+        status="ok", proxy_enabled=request.app.state.settings.proxy_enabled
+    )
 
 
 @app.post(

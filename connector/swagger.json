@@ -40,9 +40,7 @@
           "200": {
             "description": "Successful Response",
             "schema": {
-              "additionalProperties": true,
-              "type": "object",
-              "title": "Response Gethealth"
+              "$ref": "#/definitions/HealthResponse"
             }
           }
         }
@@ -64,9 +62,35 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "Successful Response",
-            "schema": {}
+          "201": {
+            "description": "Notify accepted the text message",
+            "schema": {
+              "$ref": "#/definitions/SmsResponse"
+            }
+          },
+          "400": {
+            "description": "Notify rejected the request",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "403": {
+            "description": "Notify rejected the credentials",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "429": {
+            "description": "Notify rate limit exceeded",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "500": {
+            "description": "Notify had a problem",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -93,9 +117,35 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "Successful Response",
-            "schema": {}
+          "201": {
+            "description": "Notify accepted the email",
+            "schema": {
+              "$ref": "#/definitions/EmailResponse"
+            }
+          },
+          "400": {
+            "description": "Notify rejected the request",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "403": {
+            "description": "Notify rejected the credentials",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "429": {
+            "description": "Notify rate limit exceeded",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "500": {
+            "description": "Notify had a problem",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -122,9 +172,35 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "Successful Response",
-            "schema": {}
+          "201": {
+            "description": "Notify accepted the letter",
+            "schema": {
+              "$ref": "#/definitions/LetterResponse"
+            }
+          },
+          "400": {
+            "description": "Notify rejected the request",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "403": {
+            "description": "Notify rejected the credentials",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "429": {
+            "description": "Notify rate limit exceeded",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "500": {
+            "description": "Notify had a problem",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -151,9 +227,35 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "Successful Response",
-            "schema": {}
+          "201": {
+            "description": "Notify accepted the letter",
+            "schema": {
+              "$ref": "#/definitions/PrecompiledLetterResponse"
+            }
+          },
+          "400": {
+            "description": "Notify rejected the request",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "403": {
+            "description": "Notify rejected the credentials",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "429": {
+            "description": "Notify rate limit exceeded",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "500": {
+            "description": "Notify had a problem",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -180,8 +282,34 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
-            "schema": {}
+            "description": "The message and its status",
+            "schema": {
+              "$ref": "#/definitions/NotificationResponse"
+            }
+          },
+          "400": {
+            "description": "Notify rejected the request",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "403": {
+            "description": "Notify rejected the credentials",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "429": {
+            "description": "Notify rate limit exceeded",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "500": {
+            "description": "Notify had a problem",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -262,8 +390,34 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
-            "schema": {}
+            "description": "One page of messages and their statuses",
+            "schema": {
+              "$ref": "#/definitions/NotificationListResponse"
+            }
+          },
+          "400": {
+            "description": "Notify rejected the request",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "403": {
+            "description": "Notify rejected the credentials",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "429": {
+            "description": "Notify rate limit exceeded",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "500": {
+            "description": "Notify had a problem",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -290,10 +444,34 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "The letter as a PDF",
             "schema": {
               "type": "string",
               "format": "binary"
+            }
+          },
+          "400": {
+            "description": "Notify rejected the request",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "403": {
+            "description": "Notify rejected the credentials",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "429": {
+            "description": "Notify rate limit exceeded",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "500": {
+            "description": "Notify had a problem",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
             }
           },
           "422": {
@@ -325,8 +503,34 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
-            "schema": {}
+            "description": "One page of received messages",
+            "schema": {
+              "$ref": "#/definitions/ReceivedTextMessageListResponse"
+            }
+          },
+          "400": {
+            "description": "Notify rejected the request",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "403": {
+            "description": "Notify rejected the credentials",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "429": {
+            "description": "Notify rate limit exceeded",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "500": {
+            "description": "Notify had a problem",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -359,8 +563,34 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
-            "schema": {}
+            "description": "Every template on the service",
+            "schema": {
+              "$ref": "#/definitions/TemplateListResponse"
+            }
+          },
+          "400": {
+            "description": "Notify rejected the request",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "403": {
+            "description": "Notify rejected the credentials",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "429": {
+            "description": "Notify rate limit exceeded",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "500": {
+            "description": "Notify had a problem",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -387,8 +617,34 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
-            "schema": {}
+            "description": "The template",
+            "schema": {
+              "$ref": "#/definitions/TemplateResponse"
+            }
+          },
+          "400": {
+            "description": "Notify rejected the request",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "403": {
+            "description": "Notify rejected the credentials",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "429": {
+            "description": "Notify rate limit exceeded",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "500": {
+            "description": "Notify had a problem",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -422,8 +678,34 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
-            "schema": {}
+            "description": "That version of the template",
+            "schema": {
+              "$ref": "#/definitions/TemplateResponse"
+            }
+          },
+          "400": {
+            "description": "Notify rejected the request",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "403": {
+            "description": "Notify rejected the credentials",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "429": {
+            "description": "Notify rate limit exceeded",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "500": {
+            "description": "Notify had a problem",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -458,8 +740,34 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
-            "schema": {}
+            "description": "The template with personalisation applied",
+            "schema": {
+              "$ref": "#/definitions/TemplatePreviewResponse"
+            }
+          },
+          "400": {
+            "description": "Notify rejected the request",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "403": {
+            "description": "Notify rejected the credentials",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "429": {
+            "description": "Notify rate limit exceeded",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
+          },
+          "500": {
+            "description": "Notify had a problem",
+            "schema": {
+              "$ref": "#/definitions/NotifyError"
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -472,6 +780,39 @@
     }
   },
   "definitions": {
+    "EmailContent": {
+      "properties": {
+        "body": {
+          "type": "string",
+          "title": "Body",
+          "description": "Email body as it was sent."
+        },
+        "subject": {
+          "type": "string",
+          "title": "Subject",
+          "description": "Subject line as it was sent."
+        },
+        "from_email": {
+          "title": "From Email",
+          "description": "Address the email came from.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "one_click_unsubscribe_url": {
+          "title": "One Click Unsubscribe Url",
+          "description": "Unsubscribe URL included in the email, if one was supplied.",
+          "type": "string",
+          "x-nullable": true
+        }
+      },
+      "additionalProperties": true,
+      "type": "object",
+      "required": [
+        "body",
+        "subject"
+      ],
+      "title": "EmailContent"
+    },
     "EmailRequest": {
       "properties": {
         "email_address": {
@@ -529,6 +870,48 @@
       ],
       "title": "EmailRequest"
     },
+    "EmailResponse": {
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Id",
+          "description": "ID of the notification. Use it to check delivery."
+        },
+        "reference": {
+          "title": "Reference",
+          "description": "Your own identifier for a notification or batch of notifications. Must not contain personal information.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "uri": {
+          "type": "string",
+          "title": "Uri",
+          "description": "URL of the notification on the Notify API."
+        },
+        "template": {
+          "$ref": "#/definitions/TemplateSummary"
+        },
+        "content": {
+          "$ref": "#/definitions/EmailContent"
+        },
+        "scheduled_for": {
+          "title": "Scheduled For",
+          "description": "When the email is scheduled to be sent, if it was scheduled.",
+          "type": "string",
+          "x-nullable": true
+        }
+      },
+      "additionalProperties": true,
+      "type": "object",
+      "required": [
+        "id",
+        "uri",
+        "template",
+        "content"
+      ],
+      "title": "EmailResponse",
+      "description": "Notify's 201 response to an email send."
+    },
     "HTTPValidationError": {
       "properties": {
         "detail": {
@@ -541,6 +924,47 @@
       },
       "type": "object",
       "title": "HTTPValidationError"
+    },
+    "HealthResponse": {
+      "properties": {
+        "status": {
+          "type": "string",
+          "title": "Status",
+          "description": "'ok' when the service is up."
+        },
+        "proxy_enabled": {
+          "type": "boolean",
+          "title": "Proxy Enabled",
+          "description": "Whether a Notify API key is configured for the /v2 routes."
+        }
+      },
+      "type": "object",
+      "required": [
+        "status",
+        "proxy_enabled"
+      ],
+      "title": "HealthResponse"
+    },
+    "LetterContent": {
+      "properties": {
+        "body": {
+          "type": "string",
+          "title": "Body",
+          "description": "Letter text as it was sent."
+        },
+        "subject": {
+          "type": "string",
+          "title": "Subject",
+          "description": "Subject of the letter template."
+        }
+      },
+      "additionalProperties": true,
+      "type": "object",
+      "required": [
+        "body",
+        "subject"
+      ],
+      "title": "LetterContent"
     },
     "LetterRequest": {
       "properties": {
@@ -571,6 +995,275 @@
       "title": "LetterRequest",
       "description": "A letter built from a template."
     },
+    "LetterResponse": {
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Id",
+          "description": "ID of the notification. Use it to check delivery."
+        },
+        "reference": {
+          "title": "Reference",
+          "description": "Your own identifier for a notification or batch of notifications. Must not contain personal information.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "uri": {
+          "type": "string",
+          "title": "Uri",
+          "description": "URL of the notification on the Notify API."
+        },
+        "template": {
+          "$ref": "#/definitions/TemplateSummary"
+        },
+        "content": {
+          "$ref": "#/definitions/LetterContent"
+        },
+        "scheduled_for": {
+          "title": "Scheduled For",
+          "description": "When the letter is scheduled to be sent, if it was scheduled.",
+          "type": "string",
+          "x-nullable": true
+        }
+      },
+      "additionalProperties": true,
+      "type": "object",
+      "required": [
+        "id",
+        "uri",
+        "template",
+        "content"
+      ],
+      "title": "LetterResponse",
+      "description": "Notify's 201 response to a templated letter send."
+    },
+    "Links": {
+      "properties": {
+        "current": {
+          "title": "Current",
+          "description": "URL of this page of results.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "next": {
+          "title": "Next",
+          "description": "URL of the next page, if there is one.",
+          "type": "string",
+          "x-nullable": true
+        }
+      },
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Links"
+    },
+    "NotificationListResponse": {
+      "properties": {
+        "notifications": {
+          "items": {
+            "$ref": "#/definitions/NotificationResponse"
+          },
+          "type": "array",
+          "title": "Notifications",
+          "description": "Up to 250 messages, newest first."
+        },
+        "links": {
+          "$ref": "#/definitions/Links",
+          "x-nullable": true
+        }
+      },
+      "additionalProperties": true,
+      "type": "object",
+      "required": [
+        "notifications"
+      ],
+      "title": "NotificationListResponse"
+    },
+    "NotificationResponse": {
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Id",
+          "description": "ID of the notification."
+        },
+        "reference": {
+          "title": "Reference",
+          "description": "Your own identifier for a notification or batch of notifications. Must not contain personal information.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "type": {
+          "title": "Type",
+          "description": "'sms', 'email' or 'letter'.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "status": {
+          "title": "Status",
+          "description": "Delivery status, for example 'delivered' or 'permanent-failure'.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "template": {
+          "$ref": "#/definitions/TemplateSummary",
+          "x-nullable": true
+        },
+        "body": {
+          "title": "Body",
+          "description": "Message body as it was sent.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "subject": {
+          "title": "Subject",
+          "description": "Subject line, for emails and letters.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "phone_number": {
+          "title": "Phone Number",
+          "description": "Recipient, for text messages.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "email_address": {
+          "title": "Email Address",
+          "description": "Recipient, for emails.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "line_1": {
+          "title": "Line 1",
+          "description": "Address line 1, for letters.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "line_2": {
+          "title": "Line 2",
+          "description": "Address line 2, for letters.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "line_3": {
+          "title": "Line 3",
+          "description": "Address line 3, for letters.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "line_4": {
+          "title": "Line 4",
+          "description": "Address line 4, for letters.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "line_5": {
+          "title": "Line 5",
+          "description": "Address line 5, for letters.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "line_6": {
+          "title": "Line 6",
+          "description": "Address line 6, for letters.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "postcode": {
+          "title": "Postcode",
+          "description": "Postcode, for letters.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "postage": {
+          "title": "Postage",
+          "description": "Postage class, for letters.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "created_at": {
+          "title": "Created At",
+          "description": "When the message was created.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "sent_at": {
+          "title": "Sent At",
+          "description": "When Notify sent the message.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "completed_at": {
+          "title": "Completed At",
+          "description": "When the message reached a final status.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "created_by_name": {
+          "title": "Created By Name",
+          "description": "Who sent the message, if it was sent from the Notify website.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "scheduled_for": {
+          "title": "Scheduled For",
+          "description": "When the message is scheduled to be sent, if it was scheduled.",
+          "type": "string",
+          "x-nullable": true
+        }
+      },
+      "additionalProperties": true,
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "title": "NotificationResponse",
+      "description": "One message and its delivery status."
+    },
+    "NotifyError": {
+      "properties": {
+        "status_code": {
+          "type": "integer",
+          "title": "Status Code",
+          "description": "HTTP status code, repeated in the body."
+        },
+        "errors": {
+          "items": {
+            "$ref": "#/definitions/NotifyErrorDetail"
+          },
+          "type": "array",
+          "title": "Errors",
+          "description": "One entry per problem found with the request."
+        }
+      },
+      "additionalProperties": true,
+      "type": "object",
+      "required": [
+        "status_code",
+        "errors"
+      ],
+      "title": "NotifyError",
+      "description": "The body Notify returns with a 400, 403, 429 or 500.\n\nDocumented so that a Logic App can read the reason a send was rejected\nrather than only seeing that the action failed."
+    },
+    "NotifyErrorDetail": {
+      "properties": {
+        "error": {
+          "type": "string",
+          "title": "Error",
+          "description": "Error class, for example 'BadRequestError' or 'ValidationError'."
+        },
+        "message": {
+          "type": "string",
+          "title": "Message",
+          "description": "What went wrong, in words."
+        }
+      },
+      "additionalProperties": true,
+      "type": "object",
+      "required": [
+        "error",
+        "message"
+      ],
+      "title": "NotifyErrorDetail"
+    },
     "PrecompiledLetterRequest": {
       "properties": {
         "reference": {
@@ -598,6 +1291,122 @@
       ],
       "title": "PrecompiledLetterRequest",
       "description": "A letter supplied as a ready-made PDF.\n\nNotify accepts this on the same endpoint as a templated letter; it is a\nseparate operation here so that each has a single, unambiguous schema for\nthe Azure custom connector."
+    },
+    "PrecompiledLetterResponse": {
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Id",
+          "description": "ID of the notification. Use it to check delivery."
+        },
+        "reference": {
+          "type": "string",
+          "title": "Reference",
+          "description": "Your own identifier for a notification or batch of notifications. Must not contain personal information."
+        },
+        "postage": {
+          "title": "Postage",
+          "description": "Postage class the letter was sent at.",
+          "type": "string",
+          "x-nullable": true
+        }
+      },
+      "additionalProperties": true,
+      "type": "object",
+      "required": [
+        "id",
+        "reference"
+      ],
+      "title": "PrecompiledLetterResponse",
+      "description": "Notify's 201 response to a precompiled letter send."
+    },
+    "ReceivedTextMessage": {
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Id",
+          "description": "ID of the received message."
+        },
+        "created_at": {
+          "title": "Created At",
+          "description": "When the message was received.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "service_id": {
+          "title": "Service Id",
+          "description": "ID of the receiving Notify service.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "notify_number": {
+          "title": "Notify Number",
+          "description": "Number the message was sent to.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "user_number": {
+          "title": "User Number",
+          "description": "Number the message came from.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "content": {
+          "title": "Content",
+          "description": "Text of the message.",
+          "type": "string",
+          "x-nullable": true
+        }
+      },
+      "additionalProperties": true,
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "title": "ReceivedTextMessage"
+    },
+    "ReceivedTextMessageListResponse": {
+      "properties": {
+        "received_text_messages": {
+          "items": {
+            "$ref": "#/definitions/ReceivedTextMessage"
+          },
+          "type": "array",
+          "title": "Received Text Messages",
+          "description": "Up to 250 received messages, newest first."
+        },
+        "links": {
+          "$ref": "#/definitions/Links",
+          "x-nullable": true
+        }
+      },
+      "additionalProperties": true,
+      "type": "object",
+      "required": [
+        "received_text_messages"
+      ],
+      "title": "ReceivedTextMessageListResponse"
+    },
+    "SmsContent": {
+      "properties": {
+        "body": {
+          "type": "string",
+          "title": "Body",
+          "description": "Text message as it was sent."
+        },
+        "from_number": {
+          "title": "From Number",
+          "description": "Sender the message came from.",
+          "type": "string",
+          "x-nullable": true
+        }
+      },
+      "additionalProperties": true,
+      "type": "object",
+      "required": [
+        "body"
+      ],
+      "title": "SmsContent"
     },
     "SmsRequest": {
       "properties": {
@@ -643,6 +1452,66 @@
       ],
       "title": "SmsRequest"
     },
+    "SmsResponse": {
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Id",
+          "description": "ID of the notification. Use it to check delivery."
+        },
+        "reference": {
+          "title": "Reference",
+          "description": "Your own identifier for a notification or batch of notifications. Must not contain personal information.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "uri": {
+          "type": "string",
+          "title": "Uri",
+          "description": "URL of the notification on the Notify API."
+        },
+        "template": {
+          "$ref": "#/definitions/TemplateSummary"
+        },
+        "content": {
+          "$ref": "#/definitions/SmsContent"
+        },
+        "scheduled_for": {
+          "title": "Scheduled For",
+          "description": "When the message is scheduled to be sent, if it was scheduled.",
+          "type": "string",
+          "x-nullable": true
+        }
+      },
+      "additionalProperties": true,
+      "type": "object",
+      "required": [
+        "id",
+        "uri",
+        "template",
+        "content"
+      ],
+      "title": "SmsResponse",
+      "description": "Notify's 201 response to a text message send."
+    },
+    "TemplateListResponse": {
+      "properties": {
+        "templates": {
+          "items": {
+            "$ref": "#/definitions/TemplateResponse"
+          },
+          "type": "array",
+          "title": "Templates",
+          "description": "Every template on the service."
+        }
+      },
+      "additionalProperties": true,
+      "type": "object",
+      "required": [
+        "templates"
+      ],
+      "title": "TemplateListResponse"
+    },
     "TemplatePreviewRequest": {
       "properties": {
         "personalisation": {
@@ -656,6 +1525,147 @@
       "additionalProperties": true,
       "type": "object",
       "title": "TemplatePreviewRequest"
+    },
+    "TemplatePreviewResponse": {
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Id",
+          "description": "ID of the template."
+        },
+        "type": {
+          "title": "Type",
+          "description": "'sms', 'email' or 'letter'.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "version": {
+          "title": "Version",
+          "description": "Version of the template.",
+          "type": "integer",
+          "x-nullable": true
+        },
+        "body": {
+          "type": "string",
+          "title": "Body",
+          "description": "Template body with personalisation applied."
+        },
+        "subject": {
+          "title": "Subject",
+          "description": "Subject line, for emails and letters.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "html": {
+          "title": "Html",
+          "description": "HTML version of the body, for emails.",
+          "type": "string",
+          "x-nullable": true
+        }
+      },
+      "additionalProperties": true,
+      "type": "object",
+      "required": [
+        "id",
+        "body"
+      ],
+      "title": "TemplatePreviewResponse"
+    },
+    "TemplateResponse": {
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Id",
+          "description": "ID of the template."
+        },
+        "name": {
+          "title": "Name",
+          "description": "Name of the template.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "type": {
+          "title": "Type",
+          "description": "'sms', 'email' or 'letter'.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "version": {
+          "title": "Version",
+          "description": "Version of the template.",
+          "type": "integer",
+          "x-nullable": true
+        },
+        "body": {
+          "title": "Body",
+          "description": "Template body, placeholders unfilled.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "subject": {
+          "title": "Subject",
+          "description": "Subject line, for emails and letters.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "created_at": {
+          "title": "Created At",
+          "description": "When the template was created.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "updated_at": {
+          "title": "Updated At",
+          "description": "When the template was last changed.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "created_by": {
+          "title": "Created By",
+          "description": "Who created the template.",
+          "type": "string",
+          "x-nullable": true
+        },
+        "letter_contact_block": {
+          "title": "Letter Contact Block",
+          "description": "Contact block printed on letters.",
+          "type": "string",
+          "x-nullable": true
+        }
+      },
+      "additionalProperties": true,
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "title": "TemplateResponse"
+    },
+    "TemplateSummary": {
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Id",
+          "description": "ID of the template used."
+        },
+        "version": {
+          "type": "integer",
+          "title": "Version",
+          "description": "Version of the template used."
+        },
+        "uri": {
+          "type": "string",
+          "title": "Uri",
+          "description": "URL of that version of the template."
+        }
+      },
+      "additionalProperties": true,
+      "type": "object",
+      "required": [
+        "id",
+        "version",
+        "uri"
+      ],
+      "title": "TemplateSummary"
     },
     "TokenRequest": {
       "properties": {

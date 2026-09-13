@@ -168,6 +168,143 @@ def test_no_cloudflare_headers_without_the_flag(document):
     assert headers == []
 
 
+# --- responses ---------------------------------------------------------------
+
+
+def test_send_operations_declare_notifys_own_status_codes(document):
+    """201 and 400, as the Notify documentation says — not FastAPI's defaults."""
+    for path in (
+        "/v2/notifications/sms",
+        "/v2/notifications/email",
+        "/v2/notifications/letter",
+        "/v2/notifications/letter/precompiled",
+    ):
+        responses = document["paths"][path]["post"]["responses"]
+        assert "201" in responses, path
+        assert "200" not in responses, path
+        for code in ("400", "403", "429"):
+            assert responses[code]["schema"] == {"$ref": "#/definitions/NotifyError"}, path
+
+
+def test_send_sms_success_carries_the_fields_a_logic_app_needs(document):
+    """An empty schema gives the designer nothing to offer as dynamic content."""
+    schema = document["paths"]["/v2/notifications/sms"]["post"]["responses"]["201"]["schema"]
+    assert schema == {"$ref": "#/definitions/SmsResponse"}
+    properties = document["definitions"]["SmsResponse"]["properties"]
+    assert {"id", "reference", "uri", "template", "content"} <= set(properties)
+    assert properties["content"]["$ref"] == "#/definitions/SmsContent"
+
+
+def test_error_schema_describes_the_detail_notify_returns(document):
+    error = document["definitions"]["NotifyError"]
+    assert set(error["required"]) == {"status_code", "errors"}
+    assert error["properties"]["errors"]["items"]["$ref"] == "#/definitions/NotifyErrorDetail"
+    detail = document["definitions"]["NotifyErrorDetail"]["properties"]
+    assert set(detail) == {"error", "message"}
+
+
+def test_read_operations_describe_their_bodies(document):
+    expected = {
+        ("/v2/notifications/{notification_id}", "get"): "NotificationResponse",
+        ("/v2/notifications", "get"): "NotificationListResponse",
+        ("/v2/received-text-messages", "get"): "ReceivedTextMessageListResponse",
+        ("/v2/templates", "get"): "TemplateListResponse",
+        ("/v2/template/{template_id}", "get"): "TemplateResponse",
+        ("/v2/template/{template_id}/preview", "post"): "TemplatePreviewResponse",
+    }
+    for (path, method), definition in expected.items():
+        schema = document["paths"][path][method]["responses"]["200"]["schema"]
+        assert schema == {"$ref": f"#/definitions/{definition}"}, path
+
+
+def test_no_operation_has_an_empty_success_schema(document):
+    for path, operations in document["paths"].items():
+        for method, operation in operations.items():
+            for code, response in operation["responses"].items():
+                if code.startswith("2"):
+                    assert response.get("schema"), f"{method} {path} {code}"
+
+
+# --- envelope variant --------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def envelope_document():
+    return build("notify-proxy.example.com", envelope=True)
+
+
+def test_envelope_variant_is_valid(envelope_document):
+    validate(envelope_document)
+
+
+def test_envelope_operations_return_one_status_with_the_detail_inside(envelope_document):
+    responses = envelope_document["paths"]["/v2/notifications/sms"]["post"]["responses"]
+    # Notify's own codes move into the body, so the action never fails on them.
+    assert set(responses) == {"200", "422"}
+    schema = responses["200"]["schema"]
+    assert set(schema["properties"]) == {"status_code", "success", "body", "errors"}
+    assert schema["properties"]["status_code"]["type"] == "integer"
+    assert schema["properties"]["errors"]["items"]["$ref"] == "#/definitions/NotifyErrorDetail"
+
+
+def test_envelope_body_keeps_the_operations_own_schema(envelope_document):
+    """Typed, so the designer still offers id, reference and the rest."""
+    for path, method, definition in (
+        ("/v2/notifications/sms", "post", "SmsResponse"),
+        ("/v2/notifications/email", "post", "EmailResponse"),
+        ("/v2/notifications/{notification_id}", "get", "NotificationResponse"),
+        ("/v2/templates", "get", "TemplateListResponse"),
+    ):
+        schema = envelope_document["paths"][path][method]["responses"]["200"]["schema"]
+        assert schema["properties"]["body"] == {"$ref": f"#/definitions/{definition}"}
+
+
+def test_envelope_is_requested_on_every_proxy_operation(envelope_document):
+    for path, operations in envelope_document["paths"].items():
+        if not path.startswith("/v2/"):
+            continue
+        for method, operation in operations.items():
+            headers = {p["name"]: p for p in operation["parameters"] if p["in"] == "header"}
+            header = headers.get("X-Notify-Envelope")
+            assert header is not None, f"missing on {method} {path}"
+            assert header["default"] == "true"
+            assert header["x-ms-visibility"] == "internal"
+
+
+def test_the_letter_pdf_is_not_wrapped(envelope_document):
+    """There is no sensible envelope for a PDF, so that operation is left alone."""
+    operation = envelope_document["paths"]["/v2/notifications/{notification_id}/pdf"]["get"]
+    assert operation["responses"]["200"]["schema"] == {"type": "string", "format": "binary"}
+
+
+def test_service_routes_are_not_wrapped(envelope_document):
+    """/health answers for itself; there is no Notify response to wrap."""
+    operation = envelope_document["paths"]["/health"]["get"]
+    assert operation["parameters"] == []
+    assert operation["responses"]["200"]["schema"] == {"$ref": "#/definitions/HealthResponse"}
+
+
+def test_envelope_combines_with_the_cloudflare_variant():
+    document = build("notify.example.com", cf_access_client_id="abc.access", envelope=True)
+    validate(document)
+    headers = {
+        p["name"]
+        for p in document["paths"]["/v2/notifications/sms"]["post"]["parameters"]
+        if p["in"] == "header"
+    }
+    assert headers == {"CF-Access-Client-Id", "X-Notify-Envelope"}
+
+
+def test_no_envelope_header_without_the_flag(document):
+    assert "X-Notify-Envelope" not in json.dumps(document)
+
+
+def test_committed_file_is_the_passthrough_variant(document):
+    """The default connector reports Notify's status codes as its own."""
+    committed = json.loads(COMMITTED.read_text())
+    assert "201" in committed["paths"]["/v2/notifications/sms"]["post"]["responses"]
+
+
 def test_committed_file_matches_the_generator(document):
     """connector/swagger.json is generated — regenerate it after changing routes."""
     committed = json.loads(COMMITTED.read_text())

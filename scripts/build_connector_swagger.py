@@ -26,6 +26,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # Routes are registered regardless of configuration — the Notify API key is
 # only read at startup — so the schema can be generated without any secrets.
 from app.main import app  # noqa: E402
+from app.models import NotifyEnvelope  # noqa: E402
+from app.routes_notify import ENVELOPE_HEADER  # noqa: E402
 
 
 class UnsupportedConstruct(RuntimeError):
@@ -207,6 +209,76 @@ CLOUDFLARE_SECURITY = {
 }
 
 
+ENVELOPE_DESCRIPTION = (
+    "Notify's answer, wrapped. The call itself always comes back 200, so a "
+    "Logic App action never fails on a rejected send: read 'status_code' and "
+    "'errors' to see what Notify said."
+)
+
+
+def envelope_header() -> dict[str, Any]:
+    """A fixed X-Notify-Envelope header, hidden from the Logic App designer.
+
+    The mode is a property of the connector rather than of a single call: every
+    operation is documented as returning the envelope, so every operation has
+    to ask for it.
+    """
+    return {
+        "name": ENVELOPE_HEADER,
+        "in": "header",
+        "required": True,
+        "type": "string",
+        "default": "true",
+        "description": "Asks the proxy to wrap Notify's answer in an envelope.",
+        "x-ms-summary": "Envelope mode",
+        "x-ms-visibility": "internal",
+    }
+
+
+def envelope_schema(success: dict[str, Any]) -> dict[str, Any]:
+    """The envelope, with ``body`` typed as the operation's own success schema.
+
+    Keeping ``body`` typed is the whole point: the Logic App designer reads it
+    to offer the notification's id, reference and the rest as fields.
+    """
+    schema = NotifyEnvelope.model_json_schema(ref_template="#/definitions/{model}")
+    schema.pop("$defs", None)
+    schema = convert_schema(schema)
+    # The model's docstring is written for a Python reader; the designer shows
+    # this text, so give it the one-line version.
+    schema["description"] = ENVELOPE_DESCRIPTION
+    schema["properties"]["body"] = dict(success)
+    return schema
+
+
+def enveloped_responses(operation: dict[str, Any]) -> dict[str, Any]:
+    """Rewrite an operation's responses for a connector built with --envelope.
+
+    Notify's own status codes move into the body, so the only codes left are
+    200 and whatever this service returns before it ever reaches Notify.
+    """
+    if "application/pdf" in operation.get("produces", []):
+        # A letter PDF is passed through as a PDF; there is nothing to wrap.
+        return operation["responses"]
+
+    success = next(
+        (
+            response.get("schema", {})
+            for code, response in operation["responses"].items()
+            if code.startswith("2")
+        ),
+        {},
+    )
+    responses = {
+        "200": {"description": ENVELOPE_DESCRIPTION, "schema": envelope_schema(success)}
+    }
+    if "422" in operation["responses"]:
+        # Still reachable: the proxy rejects a malformed body before it has an
+        # answer from Notify to wrap.
+        responses["422"] = operation["responses"]["422"]
+    return responses
+
+
 def cloudflare_client_id_header(client_id: str) -> dict[str, Any]:
     """A fixed CF-Access-Client-Id header, hidden from the Logic App designer.
 
@@ -231,6 +303,7 @@ def build(
     scheme: str = "https",
     include_all: bool = False,
     cf_access_client_id: str | None = None,
+    envelope: bool = False,
 ) -> dict[str, Any]:
     source = app.openapi()
 
@@ -240,13 +313,21 @@ def build(
 
     paths: dict[str, Any] = {}
     for path, operations in source["paths"].items():
+        # Only the proxy routes have a Notify response to wrap. /health and
+        # /token are this service's own and answer for themselves.
+        wrap = envelope and path.startswith("/v2/")
+        headers = extra_headers + ([envelope_header()] if wrap else [])
+
         converted_ops = {}
         for method, operation in operations.items():
             if method not in {"get", "post", "put", "patch", "delete", "head", "options"}:
                 continue
             if not include_all and operation.get("operationId") in EXCLUDED_BY_DEFAULT:
                 continue
-            converted_ops[method] = convert_operation(method, operation, extra_headers)
+            converted = convert_operation(method, operation, headers)
+            if wrap:
+                converted["responses"] = enveloped_responses(converted)
+            converted_ops[method] = converted
         if converted_ops:
             paths[path] = converted_ops
 
@@ -294,6 +375,17 @@ def main() -> int:
         help=f"Also include operations left out by default ({', '.join(sorted(EXCLUDED_BY_DEFAULT))}).",
     )
     parser.add_argument(
+        "--envelope",
+        action="store_true",
+        help=(
+            "Wrap every response: the connector asks for the envelope on each "
+            "call and each operation is documented as returning 200 with "
+            "status_code, success, body and errors. Use it when the Logic App "
+            "needs Notify's status and error detail as fields, rather than an "
+            "action that fails when Notify says no."
+        ),
+    )
+    parser.add_argument(
         "--cf-access-client-id",
         help=(
             "Cloudflare Access service token Client Id. Sends it as a fixed "
@@ -304,7 +396,13 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    document = build(args.host, args.scheme, args.include_all, args.cf_access_client_id)
+    document = build(
+        args.host,
+        args.scheme,
+        args.include_all,
+        args.cf_access_client_id,
+        args.envelope,
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(document, indent=2) + "\n")
     print(f"wrote {args.output} ({len(document['paths'])} paths, host {args.host})")
