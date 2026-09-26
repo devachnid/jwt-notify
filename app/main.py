@@ -14,13 +14,15 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, status
+from fastapi import Depends, FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from .api_key import InvalidApiKeyError, parse_api_key
-from .config import load_settings
+from .auth import require_proxy_key
+from .config import docs_enabled, load_settings
+from .limits import BodySizeLimitMiddleware
 from .models import HealthResponse
 from .notify_client import NotifyClient
 from .routes_notify import router as notify_router
@@ -47,14 +49,15 @@ async def lifespan(app: FastAPI):
             settings.notify_base_url,
             settings.notify_api_key.iss,
         )
-        if settings.proxy_key is None:
-            logger.warning(
-                "PROXY_KEY is not set: the proxy routes are open to anyone who "
-                "can reach this service. Only do this behind an authenticating "
-                "front end."
-            )
     else:
         logger.warning("NOTIFY_API_KEY is not set: the /v2 proxy routes will return 503")
+
+    if settings.proxy_key is None:
+        logger.warning(
+            "PROXY_AUTH=none: the proxy routes and /token are open to anyone who "
+            "can reach this service. Only do this behind an authenticating "
+            "front end."
+        )
 
     try:
         yield
@@ -74,7 +77,15 @@ app = FastAPI(
     ),
     version="2.0.0",
     lifespan=lifespan,
+    # The schema is still generated for the connector build; it is only not
+    # served, unless ENABLE_DOCS asks for it.
+    **(
+        {}
+        if docs_enabled()
+        else {"docs_url": None, "redoc_url": None, "openapi_url": None}
+    ),
 )
+app.add_middleware(BodySizeLimitMiddleware)
 
 
 class TokenRequest(BaseModel):
@@ -128,7 +139,11 @@ async def health(request: Request) -> HealthResponse:
 
 
 @app.post(
-    "/token", response_model=TokenResponse, operation_id="CreateToken", tags=["Service"]
+    "/token",
+    response_model=TokenResponse,
+    operation_id="CreateToken",
+    tags=["Service"],
+    dependencies=[Depends(require_proxy_key)],
 )
 async def token(request: TokenRequest) -> TokenResponse:
     """Generate a Notify JWT from an API key."""

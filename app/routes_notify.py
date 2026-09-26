@@ -18,6 +18,7 @@ detail as fields. See :class:`app.models.NotifyEnvelope`.
 from __future__ import annotations
 
 from typing import Annotated, Any
+from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
@@ -43,7 +44,13 @@ from .models import (
     TemplateResponse,
     TemplateType,
 )
-from .notify_client import NotifyClient, NotifyUnavailableError
+from .auth import require_proxy_key
+from .notify_client import (
+    TIMEOUT_MESSAGE,
+    UNREACHABLE_MESSAGE,
+    NotifyClient,
+    NotifyUnavailableError,
+)
 
 router = APIRouter(tags=["GOV.UK Notify"])
 
@@ -59,29 +66,6 @@ def get_client(request: Request) -> NotifyClient:
             ),
         )
     return client
-
-
-async def require_proxy_key(
-    request: Request,
-    # Hidden from the schema: the connector supplies this from its configured
-    # credential, so surfacing it per operation would only invite confusion.
-    x_proxy_key: Annotated[str | None, Header(include_in_schema=False)] = None,
-) -> None:
-    """Check the shared secret, when one is configured.
-
-    With no ``PROXY_KEY`` set the service trusts its front end (for example
-    Cloudflare Access) to have authenticated the caller already.
-    """
-    expected: str | None = request.app.state.settings.proxy_key
-    if expected is None:
-        return
-    import hmac
-
-    if x_proxy_key is None or not hmac.compare_digest(x_proxy_key, expected):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing or invalid X-Proxy-Key header",
-        )
 
 
 #: Header that asks for :class:`NotifyEnvelope` instead of a passthrough.
@@ -190,9 +174,12 @@ async def _forward(
     try:
         upstream = await client.request(method, path, params=params, json=json)
     except NotifyUnavailableError as exc:
-        status_code = (
-            status.HTTP_504_GATEWAY_TIMEOUT if exc.timeout else status.HTTP_502_BAD_GATEWAY
-        )
+        # The reply is built from fixed strings, never from the exception: its
+        # text is not something a caller should see, whatever it holds.
+        if exc.timeout:
+            status_code, message = status.HTTP_504_GATEWAY_TIMEOUT, TIMEOUT_MESSAGE
+        else:
+            status_code, message = status.HTTP_502_BAD_GATEWAY, UNREACHABLE_MESSAGE
         if envelope:
             # Not reaching Notify is a status like any other in envelope mode:
             # the point of the mode is that the caller never has to handle a
@@ -200,9 +187,9 @@ async def _forward(
             return _envelope(
                 status_code,
                 None,
-                [{"error": "NotifyUnavailableError", "message": str(exc)}],
+                [{"error": "NotifyUnavailableError", "message": message}],
             )
-        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        raise HTTPException(status_code=status_code, detail=message) from exc
     return _passthrough(upstream, envelope=envelope)
 
 
@@ -315,7 +302,7 @@ async def send_precompiled_letter(
     dependencies=[Authorised],
 )
 async def get_notification(
-    notification_id: str, client: Client, envelope: Enveloped
+    notification_id: UUID, client: Client, envelope: Enveloped
 ) -> Response:
     return await _forward(
         client, "GET", f"/v2/notifications/{notification_id}", envelope=envelope
@@ -347,7 +334,7 @@ async def get_notifications(
     ] = None,
     reference: Annotated[str | None, Query(description="Filter by your own reference.")] = None,
     older_than: Annotated[
-        str | None,
+        UUID | None,
         Query(description="Return the next page: messages older than this notification ID."),
     ] = None,
     include_jobs: Annotated[
@@ -363,7 +350,7 @@ async def get_notifications(
             "status": status_,
             "template_type": template_type,
             "reference": reference,
-            "older_than": older_than,
+            "older_than": None if older_than is None else str(older_than),
             "include_jobs": include_jobs,
         },
         envelope=envelope,
@@ -381,7 +368,7 @@ async def get_notifications(
     },
     dependencies=[Authorised],
 )
-async def get_letter_pdf(notification_id: str, client: Client) -> Response:
+async def get_letter_pdf(notification_id: UUID, client: Client) -> Response:
     return await _forward(client, "GET", f"/v2/notifications/{notification_id}/pdf")
 
 
@@ -405,7 +392,7 @@ async def get_received_text_messages(
     client: Client,
     envelope: Enveloped,
     older_than: Annotated[
-        str | None,
+        UUID | None,
         Query(description="Return the next page: messages older than this message ID."),
     ] = None,
 ) -> Response:
@@ -413,7 +400,7 @@ async def get_received_text_messages(
         client,
         "GET",
         "/v2/received-text-messages",
-        params={"older_than": older_than},
+        params={"older_than": None if older_than is None else str(older_than)},
         envelope=envelope,
     )
 
@@ -454,7 +441,7 @@ async def get_templates(
     },
     dependencies=[Authorised],
 )
-async def get_template(template_id: str, client: Client, envelope: Enveloped) -> Response:
+async def get_template(template_id: UUID, client: Client, envelope: Enveloped) -> Response:
     return await _forward(
         client, "GET", f"/v2/template/{template_id}", envelope=envelope
     )
@@ -471,7 +458,7 @@ async def get_template(template_id: str, client: Client, envelope: Enveloped) ->
     dependencies=[Authorised],
 )
 async def get_template_version(
-    template_id: str, version: int, client: Client, envelope: Enveloped
+    template_id: UUID, version: int, client: Client, envelope: Enveloped
 ) -> Response:
     return await _forward(
         client, "GET", f"/v2/template/{template_id}/version/{version}", envelope=envelope
@@ -492,7 +479,7 @@ async def get_template_version(
     dependencies=[Authorised],
 )
 async def preview_template(
-    template_id: str, body: TemplatePreviewRequest, client: Client, envelope: Enveloped
+    template_id: UUID, body: TemplatePreviewRequest, client: Client, envelope: Enveloped
 ) -> Response:
     return await _forward(
         client,

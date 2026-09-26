@@ -63,11 +63,15 @@ curl -X POST https://notify-proxy.example.com/v2/notifications/sms \
 | Variable | Default | Purpose |
 | -------- | ------- | ------- |
 | `NOTIFY_API_KEY` | — | The Notify API key to sign with. Without it the `/v2` routes return `503` and only `/token` works. |
-| `PROXY_KEY` | — | Shared secret callers must send as `X-Proxy-Key`. Unset means no check. |
+| `PROXY_KEY` | — | Shared secret callers must send as `X-Proxy-Key` on the `/v2` routes and `/token`. Required unless `PROXY_AUTH=none`. |
+| `PROXY_AUTH` | `key` | Set to `none` to run without `PROXY_KEY`, behind a front end that authenticates for you. |
+| `MAX_REQUEST_BYTES` | `5242880` | Larger request bodies are refused with `413`. |
+| `ENABLE_DOCS` | off | Set to `true` to serve `/docs` and `/openapi.json`. |
 | `NOTIFY_BASE_URL` | `https://api.notifications.service.gov.uk` | Useful for pointing at a stub in tests. |
 | `NOTIFY_TIMEOUT_SECONDS` | `30` | Upstream timeout. Exceeding it returns `504`. |
 
-A malformed `NOTIFY_API_KEY` fails at startup rather than on the first send.
+A malformed `NOTIFY_API_KEY` fails at startup rather than on the first send, and
+so does a missing `PROXY_KEY`: the service will not start open unless told to.
 
 ### Authentication
 
@@ -75,10 +79,10 @@ Two layers, and you want at least one of them:
 
 * **`PROXY_KEY`** — a shared secret in the `X-Proxy-Key` header, compared in
   constant time. This is what the generated connector definition declares as
-  its API key.
+  its API key. It is the default, and the service refuses to start without it.
 * **A front end that authenticates for you**, such as Cloudflare Access with a
-  service token. Leave `PROXY_KEY` unset and the service trusts its caller; it
-  logs a warning at startup so this is never silent.
+  service token. Set `PROXY_AUTH=none` instead of `PROXY_KEY` and the service
+  trusts its caller; it logs a warning at startup so this is never silent.
 
 Anyone who can reach the proxy can send messages as your Notify service, so do
 not leave it both open and publicly reachable.
@@ -187,7 +191,7 @@ the connector in your subscription can read it. On its own it is only half the
 credential — Access rejects it without the matching secret — but treat the
 definition as sensitive and rotate the service token if it leaks.
 
-With Access in front, leave `PROXY_KEY` unset: Cloudflare authenticates before
+With Access in front, set `PROXY_AUTH=none` and leave `PROXY_KEY` unset: Cloudflare authenticates before
 traffic reaches the origin, and the connector has no second slot to carry an
 `X-Proxy-Key` as well. Anything reaching the app has already passed Access.
 
@@ -203,7 +207,7 @@ rather than emitting a connector that misbehaves in the designer, and
 
 ### `POST /token`
 
-Request:
+Needs `X-Proxy-Key`, like the proxy routes. Request:
 
 ```json
 { "api_key": "my_test_key-26785a09-ab16-4eb0-8407-a37497a57506-3d844edf-8d35-48ac-975b-e847b4f122b0" }
@@ -230,6 +234,8 @@ Errors:
 | Status | Cause |
 | ------ | ----- |
 | `400`  | `api_key` is present but not in the Notify key format |
+| `401`  | `X-Proxy-Key` missing or wrong |
+| `413`  | Body larger than `MAX_REQUEST_BYTES` |
 | `422`  | `api_key` is missing, empty, or the body is not JSON |
 | `405`  | Wrong method (e.g. `GET /token`) |
 
@@ -241,14 +247,16 @@ Returns `{"status": "ok", "proxy_enabled": true}`. `proxy_enabled` is false when
 no `NOTIFY_API_KEY` is configured. It needs no `X-Proxy-Key`, so it works as a
 container health check.
 
-Interactive docs are served at `/docs`.
+Interactive docs are served at `/docs` when `ENABLE_DOCS=true`; they are off by
+default so a deployment does not advertise its routes.
 
 ### Proxy error responses
 
 | Status | Cause |
 | ------ | ----- |
 | `401`  | `X-Proxy-Key` missing or wrong, when `PROXY_KEY` is set |
-| `422`  | The request failed validation here and was never forwarded |
+| `413`  | Body larger than `MAX_REQUEST_BYTES` |
+| `422`  | The request failed validation here and was never forwarded — including a notification or template ID that is not a UUID |
 | `502`  | Notify could not be reached |
 | `503`  | No `NOTIFY_API_KEY` is configured |
 | `504`  | Notify did not answer within `NOTIFY_TIMEOUT_SECONDS` |
@@ -299,13 +307,14 @@ end of the string, not by splitting on `-` from the left.
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-.venv/bin/uvicorn app.main:app --port 8000
+.venv/bin/pip install --require-hashes -r requirements.lock
+PROXY_KEY='a long random secret' .venv/bin/uvicorn app.main:app --port 8000
 ```
 
 ```bash
 curl -X POST localhost:8000/token \
   -H 'Content-Type: application/json' \
+  -H 'X-Proxy-Key: a long random secret' \
   -d '{"api_key":"my_test_key-26785a09-ab16-4eb0-8407-a37497a57506-3d844edf-8d35-48ac-975b-e847b4f122b0"}'
 ```
 
@@ -336,10 +345,15 @@ already have one, and takes DHCP by default. Anything can be overridden:
 VMID=142 MEMORY=1024 IPV4=192.168.1.50/24 GATEWAY=192.168.1.1 ./deploy/proxmox-lxc.sh
 ```
 
+It deploys `master` unless `BRANCH` names another branch or tag. Without
+`PROXY_KEY` it generates one and prints it at the end; set `PROXY_AUTH=none`
+instead to deploy behind an authenticating front end.
+
 If the repository is private, export a token with read access first
-(`GITHUB_TOKEN=... ./deploy/proxmox-lxc.sh`); it is passed to the container
-through the environment rather than the command line, and is stripped from the
-clone's remote URL afterwards.
+(`GITHUB_TOKEN=... ./deploy/proxmox-lxc.sh`). It, the Notify API key and the
+proxy key are passed into the container on stdin, never on a command line where
+`ps` could see them, and the token is stripped from the clone's remote URL
+afterwards.
 
 The script finishes by checking `/health` and generating a token from the
 documented example key, then prints the container's address. Afterwards:
@@ -347,6 +361,19 @@ documented example key, then prints the container's address. Afterwards:
 ```bash
 pct exec <vmid> -- journalctl -u jwt-notify -f       # logs
 pct exec <vmid> -- systemctl restart jwt-notify      # restart
+```
+
+## Dependencies
+
+`requirements.txt` lists the direct dependencies; `requirements.lock` pins
+every package by version and hash, and is what the Docker image and the Proxmox
+script install. After changing `requirements.txt`, regenerate it with Python
+3.11:
+
+```bash
+pip install pip-tools
+pip-compile --generate-hashes --strip-extras --no-emit-index-url \
+  --output-file requirements.lock requirements.txt
 ```
 
 ## Tests

@@ -38,16 +38,18 @@ GATEWAY="${GATEWAY:-}"               # required when IPV4 is static
 VLAN="${VLAN:-}"                     # optional VLAN tag
 
 REPO_URL="${REPO_URL:-https://github.com/devachnid/jwt-notify}"
-BRANCH="${BRANCH:-claude/superpowers-brainstorming-l0h0av}"
+BRANCH="${BRANCH:-master}"          # the branch or tag to deploy
 APP_DIR="${APP_DIR:-/opt/jwt-notify}"
 SERVICE_USER="${SERVICE_USER:-jwtnotify}"
 PORT="${PORT:-8000}"
 
-# Service configuration. Both are optional: without NOTIFY_API_KEY the proxy
-# routes return 503 and only /token works, and without PROXY_KEY the proxy
-# trusts whatever front end sits in front of it.
+# Service configuration. Without NOTIFY_API_KEY the proxy routes return 503
+# and only /token works. PROXY_KEY is generated when not given, unless
+# PROXY_AUTH=none says an authenticating front end (such as Cloudflare Access)
+# guards the service instead.
 NOTIFY_API_KEY="${NOTIFY_API_KEY:-}"
 PROXY_KEY="${PROXY_KEY:-}"
+PROXY_AUTH="${PROXY_AUTH:-}"
 ENV_FILE="${ENV_FILE:-/etc/jwt-notify.env}"
 
 START_ON_BOOT="${START_ON_BOOT:-1}"
@@ -87,6 +89,21 @@ if [ -z "$PASSWORD" ]; then
     GENERATED_PASSWORD=1
 fi
 
+case "$PROXY_AUTH" in
+    none)
+        [ -z "$PROXY_KEY" ] || die "PROXY_AUTH=none and PROXY_KEY are both set — unset one"
+        ;;
+    ""|key)
+        if [ -z "$PROXY_KEY" ]; then
+            PROXY_KEY="$(openssl rand -hex 32)"
+            GENERATED_PROXY_KEY=1
+        fi
+        ;;
+    *)
+        die "PROXY_AUTH must be 'key' or 'none', got '$PROXY_AUTH'"
+        ;;
+esac
+
 # --- template ----------------------------------------------------------------
 
 log "looking for a $TEMPLATE_NAME template"
@@ -111,6 +128,9 @@ NET="name=eth0,bridge=${BRIDGE},ip=${IPV4}"
 [ -n "$VLAN" ] && NET="${NET},tag=${VLAN}"
 
 log "creating container $VMID ($CT_HOSTNAME)"
+# nesting=1 lets systemd inside the container create the mount namespaces the
+# unit's ProtectSystem/PrivateTmp sandboxing relies on. In an unprivileged
+# container it grants nothing on the host.
 pct create "$VMID" "$TEMPLATE" \
     --hostname "$CT_HOSTNAME" \
     --password "$PASSWORD" \
@@ -155,13 +175,16 @@ if [ -n "${GITHUB_TOKEN:-}" ]; then
 fi
 
 log "cloning $REPO_URL ($BRANCH)"
-# The URL may embed a token, so it is passed via the environment rather than
-# baked into the command line, where it would show in the container's ps output.
+# The URL may embed a token, so it goes in on stdin: anything on the command
+# line (including env VAR=... arguments) shows in ps on the host and in the
+# container while the command runs.
 # shellcheck disable=SC2016  # these expand inside the container, not on the host
-pct exec "$VMID" -- env CLONE_URL="$CLONE_URL" BRANCH="$BRANCH" APP_DIR="$APP_DIR" \
+printf '%s\n' "$CLONE_URL" | pct exec "$VMID" -- env BRANCH="$BRANCH" APP_DIR="$APP_DIR" \
     bash -euo pipefail -c '
+IFS= read -r CLONE_URL
 rm -rf "$APP_DIR"
-git clone --depth 1 --branch "$BRANCH" "$CLONE_URL" "$APP_DIR"
+# -c credential.helper= stops git caching the token anywhere.
+git -c credential.helper= clone --quiet --depth 1 --branch "$BRANCH" "$CLONE_URL" "$APP_DIR"
 # Drop any credential that git may have recorded in the remote URL.
 git -C "$APP_DIR" remote set-url origin "$(git -C "$APP_DIR" remote get-url origin | sed -E "s#//[^@]*@#//#")"
 '
@@ -169,25 +192,25 @@ git -C "$APP_DIR" remote set-url origin "$(git -C "$APP_DIR" remote get-url orig
 log "creating virtualenv and installing dependencies"
 in_ct_sh "python3 -m venv ${APP_DIR}/.venv
 ${APP_DIR}/.venv/bin/pip install --quiet --upgrade pip
-${APP_DIR}/.venv/bin/pip install --quiet -r ${APP_DIR}/requirements.txt"
+${APP_DIR}/.venv/bin/pip install --quiet --require-hashes -r ${APP_DIR}/requirements.lock"
 
 log "creating service user"
 in_ct_sh "id -u ${SERVICE_USER} >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin ${SERVICE_USER}
 chown -R ${SERVICE_USER}:${SERVICE_USER} ${APP_DIR}"
 
 log "writing $ENV_FILE"
-# Written via stdin rather than the command line so the key does not appear in
-# the container's process list, and kept readable by root only.
-# shellcheck disable=SC2016  # these expand inside the container, not on the host
-pct exec "$VMID" -- env NOTIFY_API_KEY="$NOTIFY_API_KEY" PROXY_KEY="$PROXY_KEY" \
-    ENV_FILE="$ENV_FILE" bash -euo pipefail -c '
+# The contents go in on stdin so no secret appears on a command line — on the
+# host or in the container — and the file is readable by root only.
+{
+    [ -n "$NOTIFY_API_KEY" ] && printf 'NOTIFY_API_KEY=%s\n' "$NOTIFY_API_KEY"
+    [ -n "$PROXY_KEY" ] && printf 'PROXY_KEY=%s\n' "$PROXY_KEY"
+    [ "$PROXY_AUTH" = none ] && printf 'PROXY_AUTH=none\n'
+    true
+} | pct exec "$VMID" -- env ENV_FILE="$ENV_FILE" bash -euo pipefail -c '
 umask 077
-: > "$ENV_FILE"
-[ -n "$NOTIFY_API_KEY" ] && printf "NOTIFY_API_KEY=%s\n" "$NOTIFY_API_KEY" >> "$ENV_FILE"
-[ -n "$PROXY_KEY" ] && printf "PROXY_KEY=%s\n" "$PROXY_KEY" >> "$ENV_FILE"
+cat > "$ENV_FILE"
 chown root:root "$ENV_FILE"
 chmod 600 "$ENV_FILE"
-exit 0
 '
 
 log "installing systemd unit"
@@ -238,9 +261,12 @@ fi
 CT_IP="$(in_ct hostname -I 2>/dev/null | awk '{print $1}')"
 
 log "smoke test with the documented example key"
-in_ct curl -s -X POST "http://127.0.0.1:${PORT}/token" \
-    -H 'Content-Type: application/json' \
-    -d '{"api_key":"my_test_key-26785a09-ab16-4eb0-8407-a37497a57506-3d844edf-8d35-48ac-975b-e847b4f122b0"}'
+# The X-Proxy-Key header is read from stdin (-H @-) to keep it off the command line.
+if [ -n "$PROXY_KEY" ]; then printf 'X-Proxy-Key: %s\n' "$PROXY_KEY"; fi \
+    | pct exec "$VMID" -- curl -s -X POST "http://127.0.0.1:${PORT}/token" \
+        -H @- \
+        -H 'Content-Type: application/json' \
+        -d '{"api_key":"my_test_key-26785a09-ab16-4eb0-8407-a37497a57506-3d844edf-8d35-48ac-975b-e847b4f122b0"}'
 echo
 
 cat <<SUMMARY
@@ -249,19 +275,25 @@ cat <<SUMMARY
   Address     ${CT_IP:-unknown}
   Service     http://${CT_IP:-<ip>}:${PORT}
   Health      curl http://${CT_IP:-<ip>}:${PORT}/health
-  Docs        http://${CT_IP:-<ip>}:${PORT}/docs
   Logs        pct exec $VMID -- journalctl -u jwt-notify -f
   Config      $ENV_FILE (in the container), then systemctl restart jwt-notify
-  Update      pct exec $VMID -- bash -c 'git -C ${APP_DIR} pull && systemctl restart jwt-notify'
+  Update      pct exec $VMID -- bash -c 'git -C ${APP_DIR} pull && ${APP_DIR}/.venv/bin/pip install -q --require-hashes -r ${APP_DIR}/requirements.lock && systemctl restart jwt-notify'
 SUMMARY
 
 if [ -z "$NOTIFY_API_KEY" ]; then
     warn "no NOTIFY_API_KEY was given, so the /v2 proxy routes will return 503."
     warn "add it to $ENV_FILE in the container and restart the service."
-elif [ -z "$PROXY_KEY" ]; then
-    warn "no PROXY_KEY was given: anyone who can reach the service can send"
-    warn "messages as your Notify service. Set one, or put an authenticating"
-    warn "front end in front of it."
+fi
+
+if [ "$PROXY_AUTH" = none ]; then
+    warn "PROXY_AUTH=none: anyone who can reach the service can send messages"
+    warn "as your Notify service. Only run it like this behind an authenticating"
+    warn "front end such as Cloudflare Access."
+elif [ -n "${GENERATED_PROXY_KEY:-}" ]; then
+    echo "  Proxy key   ${PROXY_KEY}"
+    echo
+    warn "PROXY_KEY was generated — callers send it as X-Proxy-Key. It is also in"
+    warn "$ENV_FILE inside the container."
 fi
 
 if [ -n "${GENERATED_PASSWORD:-}" ]; then

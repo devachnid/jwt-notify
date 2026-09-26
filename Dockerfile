@@ -2,8 +2,10 @@ FROM python:3.11-slim
 
 WORKDIR /srv
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# requirements.lock pins every dependency by hash; regenerate it from
+# requirements.txt with pip-compile (see the README).
+COPY requirements.lock .
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 
 COPY app ./app
 

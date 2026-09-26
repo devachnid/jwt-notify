@@ -11,9 +11,15 @@ SECRET = "3d844edf-8d35-48ac-975b-e847b4f122b0"
 EXAMPLE_KEY = f"my_test_key-{ISS}-{SECRET}"
 
 
+PROXY_KEY = "s3cret"
+
+
 @pytest.fixture
-def client():
-    with TestClient(app) as test_client:
+def client(monkeypatch):
+    monkeypatch.delenv("NOTIFY_API_KEY", raising=False)
+    monkeypatch.delenv("PROXY_AUTH", raising=False)
+    monkeypatch.setenv("PROXY_KEY", PROXY_KEY)
+    with TestClient(app, headers={"X-Proxy-Key": PROXY_KEY}) as test_client:
         yield test_client
 
 
@@ -67,3 +73,46 @@ def test_non_json_body_returns_422(client):
 
 def test_get_is_not_allowed(client):
     assert client.get("/token").status_code == 405
+
+
+def test_token_requires_the_proxy_key(client):
+    response = client.post(
+        "/token", json={"api_key": EXAMPLE_KEY}, headers={"X-Proxy-Key": "wrong"}
+    )
+    assert response.status_code == 401
+    assert "token" not in response.json()
+
+
+def test_health_needs_no_proxy_key(client):
+    assert client.get("/health", headers={"X-Proxy-Key": ""}).status_code == 200
+
+
+def test_docs_are_not_served_by_default(client):
+    assert client.get("/docs").status_code == 404
+    assert client.get("/openapi.json").status_code == 404
+
+
+def test_oversized_body_is_refused(client):
+    response = client.post(
+        "/token",
+        content=b'{"api_key": "' + b"x" * (6 * 1024 * 1024) + b'"}',
+        headers={"Content-Type": "application/json"},
+    )
+    assert response.status_code == 413
+
+
+def test_oversized_chunked_body_is_refused(client):
+    def chunks():
+        for _ in range(7):
+            yield b"x" * (1024 * 1024)
+
+    response = client.post(
+        "/token", content=chunks(), headers={"Content-Type": "application/json"}
+    )
+    assert response.status_code == 413
+
+
+def test_body_under_the_limit_still_reaches_the_route(client):
+    # Replaying the buffered body must leave it intact for the route.
+    response = client.post("/token", json={"api_key": EXAMPLE_KEY, "pad": "x" * 100_000})
+    assert response.status_code == 200
