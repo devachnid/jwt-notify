@@ -17,11 +17,17 @@ from .tokens import create_token
 logger = logging.getLogger("jwt-notify")
 
 
+#: What a caller is told when Notify cannot be used. Fixed strings, so nothing
+#: from an exception (hostnames, addresses, TLS detail) ever reaches a response.
+TIMEOUT_MESSAGE = "Timed out waiting for GOV.UK Notify"
+UNREACHABLE_MESSAGE = "Could not reach GOV.UK Notify"
+
+
 class NotifyUnavailableError(RuntimeError):
     """Notify could not be reached, or did not answer in time."""
 
-    def __init__(self, message: str, *, timeout: bool = False) -> None:
-        super().__init__(message)
+    def __init__(self, *, timeout: bool = False) -> None:
+        super().__init__(TIMEOUT_MESSAGE if timeout else UNREACHABLE_MESSAGE)
         self.timeout = timeout
 
 
@@ -69,11 +75,9 @@ class NotifyClient:
                 method, path, params=query, json=json, headers=headers
             )
         except httpx.TimeoutException as exc:
-            raise NotifyUnavailableError(
-                "Timed out waiting for GOV.UK Notify", timeout=True
-            ) from exc
+            raise NotifyUnavailableError(timeout=True) from exc
         except httpx.HTTPError as exc:
             # The detail (DNS names, addresses, TLS errors) goes to the log
             # rather than the caller, who only needs to know Notify was down.
             logger.warning("request to GOV.UK Notify failed: %s", exc)
-            raise NotifyUnavailableError("Could not reach GOV.UK Notify") from exc
+            raise NotifyUnavailableError() from exc

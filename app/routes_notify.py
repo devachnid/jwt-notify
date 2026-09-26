@@ -45,7 +45,12 @@ from .models import (
     TemplateType,
 )
 from .auth import require_proxy_key
-from .notify_client import NotifyClient, NotifyUnavailableError
+from .notify_client import (
+    TIMEOUT_MESSAGE,
+    UNREACHABLE_MESSAGE,
+    NotifyClient,
+    NotifyUnavailableError,
+)
 
 router = APIRouter(tags=["GOV.UK Notify"])
 
@@ -169,9 +174,12 @@ async def _forward(
     try:
         upstream = await client.request(method, path, params=params, json=json)
     except NotifyUnavailableError as exc:
-        status_code = (
-            status.HTTP_504_GATEWAY_TIMEOUT if exc.timeout else status.HTTP_502_BAD_GATEWAY
-        )
+        # The reply is built from fixed strings, never from the exception: its
+        # text is not something a caller should see, whatever it holds.
+        if exc.timeout:
+            status_code, message = status.HTTP_504_GATEWAY_TIMEOUT, TIMEOUT_MESSAGE
+        else:
+            status_code, message = status.HTTP_502_BAD_GATEWAY, UNREACHABLE_MESSAGE
         if envelope:
             # Not reaching Notify is a status like any other in envelope mode:
             # the point of the mode is that the caller never has to handle a
@@ -179,9 +187,9 @@ async def _forward(
             return _envelope(
                 status_code,
                 None,
-                [{"error": "NotifyUnavailableError", "message": str(exc)}],
+                [{"error": "NotifyUnavailableError", "message": message}],
             )
-        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        raise HTTPException(status_code=status_code, detail=message) from exc
     return _passthrough(upstream, envelope=envelope)
 
 

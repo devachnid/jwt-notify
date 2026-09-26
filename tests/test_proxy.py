@@ -463,3 +463,25 @@ def test_connection_failure_does_not_leak_upstream_detail(client, upstream):
     response = client.post("/v2/notifications/sms", json=SMS_BODY)
     assert response.status_code == 502
     assert "internal.host" not in response.text
+
+
+@pytest.mark.parametrize(
+    ("error", "status_code", "message"),
+    [
+        (httpx.ConnectError("no route to internal.host"), 502, "Could not reach GOV.UK Notify"),
+        (httpx.ReadTimeout("internal.host too slow"), 504, "Timed out waiting for GOV.UK Notify"),
+    ],
+)
+def test_unavailable_replies_use_fixed_messages(client, upstream, error, status_code, message):
+    upstream.raises = error
+    plain = client.post("/v2/notifications/sms", json=SMS_BODY)
+    assert plain.status_code == status_code
+    assert plain.json() == {"detail": message}
+
+    enveloped = client.post("/v2/notifications/sms", json=SMS_BODY, headers=ENVELOPE)
+    assert enveloped.status_code == 200
+    assert enveloped.json()["status_code"] == status_code
+    assert enveloped.json()["errors"] == [
+        {"error": "NotifyUnavailableError", "message": message}
+    ]
+    assert "internal.host" not in plain.text + enveloped.text
