@@ -20,6 +20,9 @@ ISS = "26785a09-ab16-4eb0-8407-a37497a57506"
 SECRET = "3d844edf-8d35-48ac-975b-e847b4f122b0"
 API_KEY = f"my_test_key-{ISS}-{SECRET}"
 
+NOTIFICATION_ID = "740e5834-3a29-46b4-9a6f-16142fde533a"
+TEMPLATE_ID = "f33517ff-2a88-4f6e-b855-c550268ce08a"
+
 SMS_BODY = {"phone_number": "+447900900123", "template_id": "f33517ff-2a88-4f6e-b855-c550268ce08a"}
 
 
@@ -184,10 +187,10 @@ def test_send_sms_rejects_a_missing_template(client, upstream):
 def test_get_notification_by_id(client, upstream):
     upstream.status_code = 200
     upstream.json_body = {"id": "n-1", "status": "delivered"}
-    response = client.get("/v2/notifications/n-1")
+    response = client.get(f"/v2/notifications/{NOTIFICATION_ID}")
     assert response.status_code == 200
     assert response.json()["status"] == "delivered"
-    assert upstream.last.url.path == "/v2/notifications/n-1"
+    assert upstream.last.url.path == f"/v2/notifications/{NOTIFICATION_ID}"
 
 
 def test_get_notifications_forwards_only_the_filters_given(client, upstream):
@@ -214,7 +217,7 @@ def test_letter_pdf_is_returned_as_binary(client, upstream):
     upstream.status_code = 200
     upstream.content = b"%PDF-1.7 fake"
     upstream.content_type = "application/pdf"
-    response = client.get("/v2/notifications/n-1/pdf")
+    response = client.get(f"/v2/notifications/{NOTIFICATION_ID}/pdf")
     assert response.status_code == 200
     assert response.content == b"%PDF-1.7 fake"
     assert response.headers["content-type"].startswith("application/pdf")
@@ -222,14 +225,14 @@ def test_letter_pdf_is_returned_as_binary(client, upstream):
 
 def test_template_version_path(client, upstream):
     upstream.status_code = 200
-    client.get("/v2/template/t-1/version/3")
-    assert upstream.last.url.path == "/v2/template/t-1/version/3"
+    client.get(f"/v2/template/{TEMPLATE_ID}/version/3")
+    assert upstream.last.url.path == f"/v2/template/{TEMPLATE_ID}/version/3"
 
 
 def test_template_preview(client, upstream):
     upstream.status_code = 200
-    client.post("/v2/template/t-1/preview", json={"personalisation": {"a": "b"}})
-    assert upstream.last.url.path == "/v2/template/t-1/preview"
+    client.post(f"/v2/template/{TEMPLATE_ID}/preview", json={"personalisation": {"a": "b"}})
+    assert upstream.last.url.path == f"/v2/template/{TEMPLATE_ID}/preview"
     assert json.loads(upstream.last.content) == {"personalisation": {"a": "b"}}
 
 
@@ -300,6 +303,25 @@ def test_proxy_key_rejects_the_wrong_secret(upstream):
     assert response.status_code == 401
 
 
+def test_non_ascii_proxy_key_is_a_401_not_a_500(upstream):
+    client = build_client(upstream, proxy_key="s3cret")
+    response = client.post(
+        "/v2/notifications/sms", json=SMS_BODY, headers=[(b"x-proxy-key", b"\xe9")]
+    )
+    assert response.status_code == 401
+    assert not upstream.requests
+
+
+def test_non_ascii_configured_key_still_works(upstream):
+    client = build_client(upstream, proxy_key="clé-secrète")
+    response = client.post(
+        "/v2/notifications/sms",
+        json=SMS_BODY,
+        headers=[(b"x-proxy-key", "clé-secrète".encode("utf-8"))],
+    )
+    assert response.status_code == 201
+
+
 def test_health_does_not_need_the_proxy_key(upstream):
     client = build_client(upstream, proxy_key="s3cret")
     assert client.get("/health").status_code == 200
@@ -355,7 +377,7 @@ def test_envelope_reports_notify_being_unreachable(client, upstream):
 def test_envelope_wraps_a_read_as_well_as_a_send(client, upstream):
     upstream.status_code = 200
     upstream.json_body = {"id": "n-1", "status": "delivered"}
-    response = client.get("/v2/notifications/n-1", headers=ENVELOPE)
+    response = client.get(f"/v2/notifications/{NOTIFICATION_ID}", headers=ENVELOPE)
     assert response.json()["body"]["status"] == "delivered"
     assert response.json()["status_code"] == 200
 
@@ -364,7 +386,7 @@ def test_envelope_leaves_a_pdf_alone(client, upstream):
     upstream.status_code = 200
     upstream.content = b"%PDF-1.7 fake"
     upstream.content_type = "application/pdf"
-    response = client.get("/v2/notifications/n-1/pdf", headers=ENVELOPE)
+    response = client.get(f"/v2/notifications/{NOTIFICATION_ID}/pdf", headers=ENVELOPE)
     assert response.content == b"%PDF-1.7 fake"
     assert response.headers["content-type"].startswith("application/pdf")
 
@@ -393,3 +415,51 @@ def test_passthrough_is_the_default(client, upstream):
     response = client.post("/v2/notifications/sms", json=SMS_BODY)
     assert response.status_code == 400
     assert "success" not in response.json()
+
+
+# --- upstream path hardening -------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/v2/notifications/abc%3Fx=1%23",
+        "/v2/notifications/%2E%2E",
+        "/v2/notifications/%2E%2E/pdf",
+        "/v2/template/%2E%2E",
+        "/v2/template/%2E%2E/version/1",
+        "/v2/template/abc%3Fx=1",
+    ],
+)
+def test_ids_that_would_rewrite_the_upstream_url_are_rejected(client, upstream, path):
+    response = client.get(path)
+    assert response.status_code == 422
+    assert not upstream.requests
+
+
+def test_template_preview_rejects_a_traversing_id(client, upstream):
+    response = client.post("/v2/template/%2E%2E/preview", json={})
+    assert response.status_code == 422
+    assert not upstream.requests
+
+
+@pytest.mark.parametrize(
+    "path", ["/v2/notifications", "/v2/received-text-messages"]
+)
+def test_older_than_must_be_an_id(client, upstream, path):
+    response = client.get(path, params={"older_than": "x&status=failed"})
+    assert response.status_code == 422
+    assert not upstream.requests
+
+
+def test_older_than_is_forwarded(client, upstream):
+    upstream.status_code = 200
+    client.get("/v2/notifications", params={"older_than": NOTIFICATION_ID})
+    assert dict(upstream.last.url.params) == {"older_than": NOTIFICATION_ID}
+
+
+def test_connection_failure_does_not_leak_upstream_detail(client, upstream):
+    upstream.raises = httpx.ConnectError("[Errno -2] Name or service not known: internal.host")
+    response = client.post("/v2/notifications/sms", json=SMS_BODY)
+    assert response.status_code == 502
+    assert "internal.host" not in response.text

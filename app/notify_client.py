@@ -6,12 +6,15 @@ Notify awkward to call from a static-credential client is never a concern.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import httpx
 
 from .api_key import ApiKey
 from .tokens import create_token
+
+logger = logging.getLogger("jwt-notify")
 
 
 class NotifyUnavailableError(RuntimeError):
@@ -70,5 +73,7 @@ class NotifyClient:
                 "Timed out waiting for GOV.UK Notify", timeout=True
             ) from exc
         except httpx.HTTPError as exc:
-            # The message from httpx names the host but never the credentials.
-            raise NotifyUnavailableError(f"Could not reach GOV.UK Notify: {exc}") from exc
+            # The detail (DNS names, addresses, TLS errors) goes to the log
+            # rather than the caller, who only needs to know Notify was down.
+            logger.warning("request to GOV.UK Notify failed: %s", exc)
+            raise NotifyUnavailableError("Could not reach GOV.UK Notify") from exc
