@@ -20,7 +20,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from .api_key import InvalidApiKeyError, parse_api_key
-from .auth import require_proxy_key
+from .auth import AuthenticationMiddleware, require_authenticated
+from .cloudflare_access import AccessVerifier
 from .config import docs_enabled, load_settings
 from .limits import BodySizeLimitMiddleware
 from .models import HealthResponse
@@ -36,6 +37,7 @@ async def lifespan(app: FastAPI):
     settings = load_settings()
     app.state.settings = settings
     app.state.notify_client = None
+    app.state.access_verifier = None
 
     if settings.proxy_enabled:
         assert settings.notify_api_key is not None
@@ -52,11 +54,13 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("NOTIFY_API_KEY is not set: the /v2 proxy routes will return 503")
 
-    if settings.proxy_key is None:
-        logger.warning(
-            "PROXY_AUTH=none: the proxy routes and /token are open to anyone who "
-            "can reach this service. Only do this behind an authenticating "
-            "front end."
+    if settings.cloudflare_access is not None:
+        app.state.access_verifier = AccessVerifier(
+            settings.cloudflare_access, settings.request_timeout
+        )
+        logger.info(
+            "accepting Cloudflare Access tokens from %s",
+            settings.cloudflare_access.team_domain,
         )
 
     try:
@@ -64,6 +68,8 @@ async def lifespan(app: FastAPI):
     finally:
         if app.state.notify_client is not None:
             await app.state.notify_client.aclose()
+        if app.state.access_verifier is not None:
+            await app.state.access_verifier.aclose()
 
 
 app = FastAPI(
@@ -86,6 +92,8 @@ app = FastAPI(
     ),
 )
 app.add_middleware(BodySizeLimitMiddleware)
+# Added last, so it runs first: an unauthenticated body is never read.
+app.add_middleware(AuthenticationMiddleware)
 
 
 class TokenRequest(BaseModel):
@@ -143,7 +151,7 @@ async def health(request: Request) -> HealthResponse:
     response_model=TokenResponse,
     operation_id="CreateToken",
     tags=["Service"],
-    dependencies=[Depends(require_proxy_key)],
+    dependencies=[Depends(require_authenticated)],
 )
 async def token(request: TokenRequest) -> TokenResponse:
     """Generate a Notify JWT from an API key."""

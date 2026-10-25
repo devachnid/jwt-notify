@@ -45,12 +45,19 @@ PORT="${PORT:-8000}"
 
 # Service configuration. Without NOTIFY_API_KEY the proxy routes return 503
 # and only /token works. PROXY_KEY is generated when not given, unless
-# PROXY_AUTH=none says an authenticating front end (such as Cloudflare Access)
-# guards the service instead.
+# PROXY_AUTH=cloudflare-access says Cloudflare Access guards the service: then
+# the service checks Access's token instead, and needs the team domain and the
+# Access application's Audience (AUD) tag.
 NOTIFY_API_KEY="${NOTIFY_API_KEY:-}"
 PROXY_KEY="${PROXY_KEY:-}"
 PROXY_AUTH="${PROXY_AUTH:-}"
+CF_ACCESS_TEAM_DOMAIN="${CF_ACCESS_TEAM_DOMAIN:-}"   # e.g. myteam.cloudflareaccess.com
+CF_ACCESS_AUD="${CF_ACCESS_AUD:-}"
 ENV_FILE="${ENV_FILE:-/etc/jwt-notify.env}"
+
+# Most connections uvicorn serves at once; beyond it, callers get 503 rather
+# than the service running out of memory.
+LIMIT_CONCURRENCY="${LIMIT_CONCURRENCY:-50}"
 
 START_ON_BOOT="${START_ON_BOOT:-1}"
 
@@ -91,7 +98,12 @@ fi
 
 case "$PROXY_AUTH" in
     none)
-        [ -z "$PROXY_KEY" ] || die "PROXY_AUTH=none and PROXY_KEY are both set — unset one"
+        die "PROXY_AUTH=none is no longer supported — behind Cloudflare Access use PROXY_AUTH=cloudflare-access with CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD"
+        ;;
+    cloudflare-access)
+        [ -z "$PROXY_KEY" ] || die "PROXY_AUTH=cloudflare-access and PROXY_KEY are both set — unset one"
+        [ -n "$CF_ACCESS_TEAM_DOMAIN" ] || die "PROXY_AUTH=cloudflare-access needs CF_ACCESS_TEAM_DOMAIN (e.g. myteam.cloudflareaccess.com)"
+        [ -n "$CF_ACCESS_AUD" ] || die "PROXY_AUTH=cloudflare-access needs CF_ACCESS_AUD, the Access application's Audience tag"
         ;;
     ""|key)
         if [ -z "$PROXY_KEY" ]; then
@@ -100,9 +112,11 @@ case "$PROXY_AUTH" in
         fi
         ;;
     *)
-        die "PROXY_AUTH must be 'key' or 'none', got '$PROXY_AUTH'"
+        die "PROXY_AUTH must be 'key' or 'cloudflare-access', got '$PROXY_AUTH'"
         ;;
 esac
+
+[[ "$LIMIT_CONCURRENCY" =~ ^[1-9][0-9]*$ ]] || die "LIMIT_CONCURRENCY must be a positive whole number, got '$LIMIT_CONCURRENCY'"
 
 # --- template ----------------------------------------------------------------
 
@@ -204,7 +218,11 @@ log "writing $ENV_FILE"
 {
     [ -n "$NOTIFY_API_KEY" ] && printf 'NOTIFY_API_KEY=%s\n' "$NOTIFY_API_KEY"
     [ -n "$PROXY_KEY" ] && printf 'PROXY_KEY=%s\n' "$PROXY_KEY"
-    [ "$PROXY_AUTH" = none ] && printf 'PROXY_AUTH=none\n'
+    if [ "$PROXY_AUTH" = cloudflare-access ]; then
+        printf 'PROXY_AUTH=cloudflare-access\n'
+        printf 'CF_ACCESS_TEAM_DOMAIN=%s\n' "$CF_ACCESS_TEAM_DOMAIN"
+        printf 'CF_ACCESS_AUD=%s\n' "$CF_ACCESS_AUD"
+    fi
     true
 } | pct exec "$VMID" -- env ENV_FILE="$ENV_FILE" bash -euo pipefail -c '
 umask 077
@@ -225,7 +243,7 @@ Type=exec
 User=${SERVICE_USER}
 WorkingDirectory=${APP_DIR}
 EnvironmentFile=-${ENV_FILE}
-ExecStart=${APP_DIR}/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port ${PORT}
+ExecStart=${APP_DIR}/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --limit-concurrency ${LIMIT_CONCURRENCY}
 Restart=on-failure
 RestartSec=2
 
@@ -285,10 +303,11 @@ if [ -z "$NOTIFY_API_KEY" ]; then
     warn "add it to $ENV_FILE in the container and restart the service."
 fi
 
-if [ "$PROXY_AUTH" = none ]; then
-    warn "PROXY_AUTH=none: anyone who can reach the service can send messages"
-    warn "as your Notify service. Only run it like this behind an authenticating"
-    warn "front end such as Cloudflare Access."
+if [ "$PROXY_AUTH" = cloudflare-access ]; then
+    warn "PROXY_AUTH=cloudflare-access: requests need a Cf-Access-Jwt-Assertion"
+    warn "that Access signed for AUD ${CF_ACCESS_AUD:0:12}..., so the smoke test above"
+    warn "is expected to get 401. The service fetches Access's public keys from"
+    warn "https://${CF_ACCESS_TEAM_DOMAIN}/cdn-cgi/access/certs, so it needs outbound HTTPS."
 elif [ -n "${GENERATED_PROXY_KEY:-}" ]; then
     echo "  Proxy key   ${PROXY_KEY}"
     echo

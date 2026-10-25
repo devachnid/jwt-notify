@@ -62,14 +62,23 @@ class Upstream:
         return pyjwt.decode(auth[7:], SECRET, algorithms=["HS256"])
 
 
+#: What :func:`build_client` configures, and sends, when a test does not care
+#: about inbound authentication.
+DEFAULT_PROXY_KEY = "test-proxy-key"
+
+
 def build_client(upstream: Upstream, *, proxy_key: str | None = None, api_key=API_KEY):
-    """A TestClient wired to the fake upstream, bypassing the real lifespan."""
+    """A TestClient wired to the fake upstream, bypassing the real lifespan.
+
+    Without ``proxy_key`` the client sends the default key on every request; with
+    it, the test supplies (or withholds) ``X-Proxy-Key`` itself.
+    """
     parsed = parse_api_key(api_key) if api_key else None
     app.state.settings = Settings(
         notify_api_key=parsed,
         notify_base_url="https://api.notifications.service.gov.uk",
         request_timeout=30.0,
-        proxy_key=proxy_key,
+        proxy_key=proxy_key or DEFAULT_PROXY_KEY,
     )
     app.state.notify_client = (
         NotifyClient(
@@ -82,7 +91,7 @@ def build_client(upstream: Upstream, *, proxy_key: str | None = None, api_key=AP
         else None
     )
     # TestClient(app) would run the lifespan and overwrite the wiring above.
-    return TestClient(app)
+    return TestClient(app, headers={} if proxy_key else {"X-Proxy-Key": DEFAULT_PROXY_KEY})
 
 
 @pytest.fixture

@@ -44,7 +44,7 @@ from .models import (
     TemplateResponse,
     TemplateType,
 )
-from .auth import require_proxy_key
+from .auth import require_authenticated
 from .notify_client import (
     TIMEOUT_MESSAGE,
     UNREACHABLE_MESSAGE,
@@ -75,9 +75,9 @@ _TRUTHY = {"1", "true", "yes", "on"}
 
 
 async def wants_envelope(
-    # Hidden from the schema for the same reason as the proxy key: the
-    # connector built with --envelope sends it as a fixed header, so it is not
-    # something a Logic App author should have to fill in per operation.
+    # Hidden from the schema: the connector built with --envelope sends it as
+    # a fixed header, so it is not something a Logic App author should have to
+    # fill in per operation.
     x_notify_envelope: Annotated[
         str | None, Header(alias=ENVELOPE_HEADER, include_in_schema=False)
     ] = None,
@@ -87,7 +87,7 @@ async def wants_envelope(
 
 Client = Annotated[NotifyClient, Depends(get_client)]
 Enveloped = Annotated[bool, Depends(wants_envelope)]
-Authorised = Depends(require_proxy_key)
+Authorised = Depends(require_authenticated)
 
 
 #: Notify's documented failures, described so that the connector — and anyone
