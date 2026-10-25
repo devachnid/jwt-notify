@@ -1,9 +1,13 @@
+import asyncio
 import time
+from dataclasses import replace
 
 import jwt as pyjwt
 import pytest
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
+from app.auth import require_authenticated
 from app.main import app
 
 ISS = "26785a09-ab16-4eb0-8407-a37497a57506"
@@ -116,3 +120,95 @@ def test_body_under_the_limit_still_reaches_the_route(client):
     # Replaying the buffered body must leave it intact for the route.
     response = client.post("/token", json={"api_key": EXAMPLE_KEY, "pad": "x" * 100_000})
     assert response.status_code == 200
+
+
+# --- authentication happens before the body is read --------------------------
+
+
+def _call(scope_headers, path="/token", receive=None):
+    """Drive the ASGI app directly, so a test can see what it reads."""
+    reads = []
+    sent = []
+
+    async def default_receive():
+        reads.append(1)
+        return {"type": "http.request", "body": b"{}", "more_body": False}
+
+    async def send(message):
+        sent.append(message)
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": path,
+        "raw_path": path.encode(),
+        "root_path": "",
+        "query_string": b"",
+        "headers": scope_headers,
+        "client": ("127.0.0.1", 1234),
+        "server": ("testserver", 80),
+        "app": app,
+    }
+    # Bounded, so a missing read deadline fails the test instead of hanging it.
+    asyncio.run(asyncio.wait_for(app(scope, receive or default_receive, send), 10))
+    status_code = next(m["status"] for m in sent if m["type"] == "http.response.start")
+    return status_code, reads
+
+
+def test_an_unauthenticated_body_is_never_read(client):
+    status_code, reads = _call(
+        [(b"content-type", b"application/json"), (b"content-length", b"5000000")]
+    )
+    assert status_code == 401
+    assert reads == []
+
+
+def test_malformed_json_without_the_key_is_a_401_not_a_422(client):
+    # The body must not even be parsed for a caller without the key.
+    response = client.post(
+        "/token",
+        content=b"{not json",
+        headers={"Content-Type": "application/json", "X-Proxy-Key": "wrong"},
+    )
+    assert response.status_code == 401
+
+
+def test_unauthenticated_routes_only_accept_a_small_body(client):
+    response = client.post(
+        "/health", content=b"x" * 64 * 1024, headers={"X-Proxy-Key": ""}
+    )
+    assert response.status_code == 413
+
+
+def test_a_stalled_body_is_cut_off(client, monkeypatch):
+    monkeypatch.setattr(
+        app.state, "settings", replace(app.state.settings, body_read_timeout=0.2)
+    )
+    first = True
+
+    async def stall():
+        nonlocal first
+        if first:
+            first = False
+            return {"type": "http.request", "body": b'{"api_key": "', "more_body": True}
+        await asyncio.Event().wait()
+
+    started = time.monotonic()
+    status_code, _ = _call([(b"x-proxy-key", PROXY_KEY.encode())], receive=stall)
+    assert status_code == 408
+    assert time.monotonic() - started < 5
+
+
+def test_a_route_reached_without_the_middleware_is_refused():
+    # The route-level check is a backstop: if a protected route were ever
+    # mounted where the middleware does not look, it fails closed.
+    bare = FastAPI()
+
+    @bare.get("/secret", dependencies=[Depends(require_authenticated)])
+    async def secret():
+        return {"ok": True}
+
+    assert TestClient(bare).get("/secret").status_code == 401

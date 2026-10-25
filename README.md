@@ -63,9 +63,12 @@ curl -X POST https://notify-proxy.example.com/v2/notifications/sms \
 | Variable | Default | Purpose |
 | -------- | ------- | ------- |
 | `NOTIFY_API_KEY` | — | The Notify API key to sign with. Without it the `/v2` routes return `503` and only `/token` works. |
-| `PROXY_KEY` | — | Shared secret callers must send as `X-Proxy-Key` on the `/v2` routes and `/token`. Required unless `PROXY_AUTH=none`. |
-| `PROXY_AUTH` | `key` | Set to `none` to run without `PROXY_KEY`, behind a front end that authenticates for you. |
-| `MAX_REQUEST_BYTES` | `5242880` | Larger request bodies are refused with `413`. |
+| `PROXY_KEY` | — | Shared secret callers must send as `X-Proxy-Key` on the `/v2` routes and `/token`. Required unless `PROXY_AUTH=cloudflare-access`. |
+| `PROXY_AUTH` | `key` | Set to `cloudflare-access` to check Cloudflare Access's token instead of `PROXY_KEY`. |
+| `CF_ACCESS_TEAM_DOMAIN` | — | Your Access team domain, e.g. `myteam.cloudflareaccess.com` (or just `myteam`). Required with `PROXY_AUTH=cloudflare-access`. |
+| `CF_ACCESS_AUD` | — | The Access application's Audience (AUD) tag. Required with `PROXY_AUTH=cloudflare-access`. |
+| `MAX_REQUEST_BYTES` | `5242880` | Larger request bodies from authenticated callers are refused with `413`. Unauthenticated requests get 4 KiB. |
+| `BODY_READ_TIMEOUT_SECONDS` | `30` | A request body not fully received in this time gets `408`. |
 | `ENABLE_DOCS` | off | Set to `true` to serve `/docs` and `/openapi.json`. |
 | `NOTIFY_BASE_URL` | `https://api.notifications.service.gov.uk` | Useful for pointing at a stub in tests. |
 | `NOTIFY_TIMEOUT_SECONDS` | `30` | Upstream timeout. Exceeding it returns `504`. |
@@ -75,17 +78,23 @@ so does a missing `PROXY_KEY`: the service will not start open unless told to.
 
 ### Authentication
 
-Two layers, and you want at least one of them:
+The `/v2` routes and `/token` accept one of:
 
 * **`PROXY_KEY`** — a shared secret in the `X-Proxy-Key` header, compared in
   constant time. This is what the generated connector definition declares as
   its API key. It is the default, and the service refuses to start without it.
-* **A front end that authenticates for you**, such as Cloudflare Access with a
-  service token. Set `PROXY_AUTH=none` instead of `PROXY_KEY` and the service
-  trusts its caller; it logs a warning at startup so this is never silent.
+* **Cloudflare Access** — with `PROXY_AUTH=cloudflare-access`, the service
+  checks the `Cf-Access-Jwt-Assertion` header Access adds to every request it
+  lets through: the signature against your team's published keys, the issuer,
+  the expiry, and that the audience is your application's AUD tag. A request
+  that reaches the port without passing Access is refused, so being able to
+  reach the container is not enough. See [Behind Cloudflare Access](#behind-cloudflare-access).
 
-Anyone who can reach the proxy can send messages as your Notify service, so do
-not leave it both open and publicly reachable.
+The check runs before the request body is read, so an unauthenticated caller
+cannot make the service buffer or parse anything. There is no open mode:
+anyone who can reach an unauthenticated proxy can send messages as your Notify
+service. (`PROXY_AUTH=none`, which trusted the front end without checking it,
+is refused at startup.)
 
 ## Azure Logic App custom connector
 
@@ -191,9 +200,16 @@ the connector in your subscription can read it. On its own it is only half the
 credential — Access rejects it without the matching secret — but treat the
 definition as sensitive and rotate the service token if it leaks.
 
-With Access in front, set `PROXY_AUTH=none` and leave `PROXY_KEY` unset: Cloudflare authenticates before
-traffic reaches the origin, and the connector has no second slot to carry an
-`X-Proxy-Key` as well. Anything reaching the app has already passed Access.
+With Access in front, set `PROXY_AUTH=cloudflare-access` and leave `PROXY_KEY`
+unset — the connector has no second slot to carry an `X-Proxy-Key` as well.
+Set `CF_ACCESS_TEAM_DOMAIN` to your team domain and `CF_ACCESS_AUD` to the
+Audience tag shown on the Access application's overview page. The service then
+verifies the token Access attaches to each request, so traffic that reaches the
+origin some other way — straight to the container's port, around the tunnel —
+gets `401`. It fetches Access's public keys from
+`https://<team>.cloudflareaccess.com/cdn-cgi/access/certs`, so it needs
+outbound HTTPS; if it cannot get them it answers `503` rather than letting
+requests through.
 
 `POST /token` is left out of the connector by default — handing it the ability
 to mint bare tokens invites exactly the pattern the proxy exists to remove. Pass
@@ -234,7 +250,8 @@ Errors:
 | Status | Cause |
 | ------ | ----- |
 | `400`  | `api_key` is present but not in the Notify key format |
-| `401`  | `X-Proxy-Key` missing or wrong |
+| `401`  | `X-Proxy-Key` missing or wrong (or, in Cloudflare Access mode, no valid Access token) — checked before the body is read |
+| `408`  | Body not fully received within `BODY_READ_TIMEOUT_SECONDS` |
 | `413`  | Body larger than `MAX_REQUEST_BYTES` |
 | `422`  | `api_key` is missing, empty, or the body is not JSON |
 | `405`  | Wrong method (e.g. `GET /token`) |
@@ -254,11 +271,12 @@ default so a deployment does not advertise its routes.
 
 | Status | Cause |
 | ------ | ----- |
-| `401`  | `X-Proxy-Key` missing or wrong, when `PROXY_KEY` is set |
+| `401`  | `X-Proxy-Key` missing or wrong, or in Cloudflare Access mode no valid Access token |
+| `408`  | Body not fully received within `BODY_READ_TIMEOUT_SECONDS` |
 | `413`  | Body larger than `MAX_REQUEST_BYTES` |
 | `422`  | The request failed validation here and was never forwarded — including a notification or template ID that is not a UUID |
 | `502`  | Notify could not be reached |
-| `503`  | No `NOTIFY_API_KEY` is configured |
+| `503`  | No `NOTIFY_API_KEY` is configured, Cloudflare Access's keys could not be fetched, or more than the concurrency limit of connections are open |
 | `504`  | Notify did not answer within `NOTIFY_TIMEOUT_SECONDS` |
 
 Anything else is Notify's own response, forwarded unchanged — including `201`
@@ -346,8 +364,17 @@ VMID=142 MEMORY=1024 IPV4=192.168.1.50/24 GATEWAY=192.168.1.1 ./deploy/proxmox-l
 ```
 
 It deploys `master` unless `BRANCH` names another branch or tag. Without
-`PROXY_KEY` it generates one and prints it at the end; set `PROXY_AUTH=none`
-instead to deploy behind an authenticating front end.
+`PROXY_KEY` it generates one and prints it at the end. To deploy behind
+Cloudflare Access instead, set `PROXY_AUTH=cloudflare-access` with
+`CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD`. uvicorn runs with
+`--limit-concurrency 50` (override with `LIMIT_CONCURRENCY`), so a flood of
+connections gets `503` instead of exhausting the container's memory.
+
+An existing deployment configured with `PROXY_AUTH=none` will not start after
+updating: edit `/etc/jwt-notify.env` in the container to set
+`PROXY_AUTH=cloudflare-access`, `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD`
+before restarting, and add `--limit-concurrency 50` to `ExecStart` in
+`/etc/systemd/system/jwt-notify.service` (then `systemctl daemon-reload`).
 
 If the repository is private, export a token with read access first
 (`GITHUB_TOKEN=... ./deploy/proxmox-lxc.sh`). It, the Notify API key and the
